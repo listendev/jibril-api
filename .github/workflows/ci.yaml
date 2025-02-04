@@ -1,0 +1,32 @@
+name: CI
+on:
+  workflow_dispatch:
+  pull_request:
+  push:
+    branches:
+      - main
+    tags:
+      - v*
+# Cancel any running jobs for PRs on a new commit
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+jobs:
+  release:
+      name: Create official release
+      runs-on: ubuntu-latest
+      permissions:
+        contents: write
+      outputs:
+        release-urL: ${{ steps.release.outputs.url }}
+      steps:
+        - name: Checkout
+          uses: actions/checkout@v4
+
+        - name: Create release for tag
+          uses: softprops/action-gh-release@v2
+          if: startsWith(github.ref, 'refs/tags/v')
+          id: release
+          with:
+            generate_release_notes: true
+            make_latest: true
