@@ -1,0 +1,93 @@
+name: Lint PRs
+on:
+  pull_request:
+    types:
+      - opened
+      - edited
+      - synchronize
+      - reopened
+      - labeled
+  workflow_dispatch:
+
+jobs:
+  shellcheck-pr:
+    runs-on: ubuntu-latest
+    name: PR - Shellcheck
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ludeeus/action-shellcheck@master
+
+  actionlint-pr:
+    runs-on: ubuntu-latest
+    name: PR - Actionlint
+    steps:
+      - uses: actions/checkout@v4
+      - run: |
+          echo "::add-matcher::.github/actionlint-matcher.json"
+          bash <(curl https://raw.githubusercontent.com/rhysd/actionlint/main/scripts/download-actionlint.bash)
+          ./actionlint -color -shellcheck=
+        shell: bash
+
+  docslint-pr:
+    runs-on: ubuntu-latest
+    name: PR - Markdownlint
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run markdownlint
+        uses: actionshub/markdownlint@v3.1.4
+
+  prchecker-lint:
+    runs-on: ubuntu-latest
+    # Can only be invoked on PRs
+    if: github.event_name == 'pull_request'
+    name: PR - Check title format
+    steps:
+      - uses: amannn/action-semantic-pull-request@v5
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          # Configure which types are allowed (newline-delimited).
+          # Default: https://github.com/commitizen/conventional-commit-types
+          types: |
+            chore
+            fix
+            feat
+            build
+            ci
+            docs
+            perf
+            refactor
+            test
+          # Configure that a scope does not have to be provided.
+          requireScope: false
+          # If the PR contains one of these newline-delimited labels, the
+          # validation is skipped. If you want to rerun the validation when
+          # labels change, you might want to use the `labeled` and `unlabeled`
+          # event triggers in your workflow.
+          ignoreLabels: |
+            ci
+            automerge
+            dependencies
+
+  # This job provides the single required status for PRs to be merged into main.
+  # Instead of updating the protected branch status in github, we can just update the "needs" section below
+  # to require additional/remove existing status checks to protect main via a simple GitOps process.
+  # We can use the alls-green action to get around the github assumption that a "skipped" required status check
+  # counts as passed. 
+  test-required-checks-complete:
+    # This step always has to run in order to check if the dependent jobs passed even if upstream jobs are skipped.
+    if: always()
+    needs:
+      - shellcheck-pr
+      - actionlint-pr
+      - docslint-pr
+      - prchecker-lint
+    name: Linting checks complete
+    runs-on: ubuntu-latest
+    permissions: {}
+    steps:
+      - name: Decide whether the needed jobs succeeded or failed
+        uses: re-actors/alls-green@release/v1
+        with:
+          allowed-skips: prchecker-lint
+          jobs: ${{ toJSON(needs) }}
