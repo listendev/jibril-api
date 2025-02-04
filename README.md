@@ -1,6 +1,6 @@
 # jibril-api
 
-OpenAPI spec for the API to Jibril Server.
+Client package, types and OpenAPI spec for the API to Jibril Server.
 
 ## Spec
 
