@@ -90,6 +90,12 @@ components:
       properties:
         id:
           type: string
+        project_id:
+          type: string
+          description: It is the ID of the listen.dev project.
+        org_id:
+          type: string
+          description: It is the ID of the listen.dev organization.
         kind:
           type: string
         github_context:

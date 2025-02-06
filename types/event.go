@@ -46,12 +46,23 @@ func (e *Event) Validate() error {
 // Event is something that happened in the system.
 // Can be of different types but more or less every events has same properties.
 type Event struct {
-	ID            string         `json:"id"`
+	ID string `json:"id"`
+	// projectID is the ID of the listen.dev project.
+	projectID string
+	// orgID is the ID of the listen.dev organization.
+	orgID         string
 	Data          EventData      `json:"data"`
 	GithubContext *GitHubContext `json:"github_context,omitempty"`
 	Kind          EventKind      `json:"kind"`
 	CreatedAt     time.Time      `json:"createdAt"`
 	UpdatedAt     time.Time      `json:"updatedAt"`
+}
+
+func (e Event) WithListenDevInfo(projectID, orgID string) Event {
+	e.projectID = projectID
+	e.orgID = orgID
+
+	return e
 }
 
 type EventData struct {
