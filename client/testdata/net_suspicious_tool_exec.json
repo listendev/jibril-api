@@ -1,0 +1,219 @@
+{
+	"kind": "net_suspicious_tool_exec",
+    "id": "26b003cf5bb06e5925dbe323b278ea99f07d6779f6525b2fc56b89fc8a31b3c7",
+	"data": {
+		"body": {
+			"full_info": {
+				"ancestry": [{
+						"start": "2025-02-06T04:25:17Z",
+						"exit": "running",
+						"retcode": 0,
+						"uid": 0,
+						"pid": 1,
+						"ppid": 0,
+						"comm": "systemd",
+						"cmd": "systemd",
+						"exe": "/usr/lib/systemd/systemd",
+						"args": "/sbin/init"
+					},
+					{
+						"start": "2025-02-06T04:25:26Z",
+						"exit": "running",
+						"retcode": 0,
+						"uid": 0,
+						"pid": 710,
+						"ppid": 1,
+						"comm": "provisioner",
+						"cmd": "provisioner",
+						"exe": "/opt/runner/provisioner/provisioner",
+						"args": "/opt/runner/provisioner/provisioner --agentdirectory /home/runner/runners --settings /opt/runner/provisioner/.settings"
+					},
+					{
+						"start": "2025-02-06T04:28:14Z",
+						"exit": "running",
+						"retcode": 0,
+						"uid": 1001,
+						"pid": 1603,
+						"ppid": 710,
+						"comm": "Runner.Listener",
+						"cmd": "Runner.Listener",
+						"exe": "/home/runner/runners/2.322.0/bin/Runner.Listener",
+						"args": "/home/runner/runners/2.322.0/bin/Runner.Listener run"
+					},
+					{
+						"start": "2025-02-06T04:28:16Z",
+						"exit": "running",
+						"retcode": 0,
+						"uid": 1001,
+						"pid": 1617,
+						"ppid": 1603,
+						"comm": "Runner.Worker",
+						"cmd": "Runner.Worker",
+						"exe": "/home/runner/runners/2.322.0/bin/Runner.Worker",
+						"args": "/home/runner/runners/2.322.0/bin/Runner.Worker spawnclient 155 158"
+					},
+					{
+						"start": "2025-02-06T04:29:42Z",
+						"exit": "2025-02-06T04:29:45Z",
+						"retcode": 0,
+						"uid": 1001,
+						"pid": 2196,
+						"ppid": 1617,
+						"comm": "bash",
+						"cmd": "bash",
+						"exe": "/usr/bin/bash",
+						"args": "/usr/bin/bash -e /home/runner/work/_temp/ee1dca21-7716-4a40-9bc2-23dc3e3250dc.sh"
+					},
+					{
+						"start": "2025-02-06T04:29:44Z",
+						"exit": "2025-02-06T04:29:45Z",
+						"retcode": 256,
+						"uid": 1001,
+						"pid": 2202,
+						"ppid": 2196,
+						"comm": "ping",
+						"cmd": "ping",
+						"exe": "/usr/bin/ping",
+						"args": "ping -c 1 -w 1 1.1.1.1"
+					}
+				],
+				"files": {
+					"etc": {
+						"ld.so.cache": "mmap|open|close",
+						"locale.alias": "open|read|close"
+					},
+					"usr": {
+						"bin": {
+							"ping": "mmap|open|close|execve"
+						},
+						"lib": {
+							"locale": {
+								"C.utf8": {
+									"LC_ADDRESS": "mmap|open|close",
+									"LC_COLLATE": "mmap|open|close",
+									"LC_CTYPE": "mmap|open|close",
+									"LC_IDENTIFICATION": "mmap|open|close",
+									"LC_MEASUREMENT": "mmap|open|close",
+									"LC_MESSAGES": {
+										"SYS_LC_MESSAGES": "mmap|open|close"
+									},
+									"LC_MONETARY": "mmap|open|close",
+									"LC_NAME": "mmap|open|close",
+									"LC_NUMERIC": "mmap|open|close",
+									"LC_PAPER": "mmap|open|close",
+									"LC_TELEPHONE": "mmap|open|close",
+									"LC_TIME": "mmap|open|close"
+								},
+								"locale-archive": "mmap|open|close"
+							},
+							"x86_64-linux-gnu": {
+								"gconv": {
+									"gconv-modules.cache": "mmap|open|close"
+								},
+								"ld-linux-x86-64.so.2": "mmap|open|close",
+								"libc.so.6": "mmap|open|read|close",
+								"libcap.so.2.66": "mmap|open|read|close",
+								"libidn2.so.0.4.0": "mmap|open|read|close",
+								"libunistring.so.5.0.0": "mmap|open|read|close"
+							}
+						}
+					}
+				},
+				"flows": [{
+					"ip_version": 4,
+					"proto": "ICMP",
+					"service_port": 0,
+					"local": {
+						"address": "10.1.0.25",
+						"name": "",
+						"names": [
+							"10.1.0.25",
+							"fv-az1078-218.0mveoby4soyuvbxdchl2bglkpg.cx.internal.cloudapp.net",
+							"fv-az1078-218"
+						],
+						"port": 0
+					},
+					"remote": {
+						"address": "1.1.1.1",
+						"name": "",
+						"names": [
+							"1.1.1.1"
+						],
+						"port": 0
+					},
+					"icmp": {
+						"type": "EchoRequest",
+						"code": "0"
+					},
+					"settings": {
+						"direction": "egress",
+						"status": "ongoing"
+					}
+				}]
+			},
+			"note": "net_suspicious_tool_exec_medium_0_2",
+			"parent": {
+				"start": "2025-02-06T04:29:42Z",
+				"exit": "2025-02-06T04:29:45Z",
+				"retcode": 0,
+				"uid": 1001,
+				"pid": 2196,
+				"ppid": 1617,
+				"comm": "bash",
+				"cmd": "bash",
+				"exe": "/usr/bin/bash",
+				"args": "/usr/bin/bash -e /home/runner/work/_temp/ee1dca21-7716-4a40-9bc2-23dc3e3250dc.sh"
+			},
+			"process": {
+				"start": "2025-02-06T04:29:44Z",
+				"exit": "2025-02-06T04:29:45Z",
+				"retcode": 256,
+				"uid": 1001,
+				"pid": 2202,
+				"ppid": 2196,
+				"comm": "ping",
+				"cmd": "ping",
+				"exe": "/usr/bin/ping",
+				"args": "ping -c 1 -w 1 1.1.1.1"
+			}
+		},
+		"head": {
+			"name": "net_suspicious_tool_exec",
+			"version": "v1.0",
+			"format": "execution",
+			"description": "Network suspicious tool",
+			"documentation": "https://listendev.github.io/jibril/dev/detections/net_suspicious_tool_exec/",
+			"category": "command_and_control",
+			"mechanism": "execution",
+			"method": "web_protocols",
+			"importance": "medium"
+		}
+	},
+	"github_context": {
+		"action": "9. ICMP test",
+		"actor": "rafaeldtinoco",
+		"actor_id": "7395852",
+		"event_name": "pull_request",
+		"job": "run",
+		"ref": "refs/pull/373/merge",
+		"ref_name": "373/merge",
+		"ref_protected": false,
+		"ref_type": "branch",
+		"repository": "listendev/jibril",
+		"repository_id": "785073365",
+		"repository_owner": "listendev",
+		"repository_owner_id": "103680976",
+		"run_attempt": "1",
+		"run_id": "13171784858",
+		"run_number": "200",
+		"runner_arch": "X64",
+		"runner_os": "Linux",
+		"server_url": "https://github.com",
+		"sha": "27bca8119f027a906e72c8ff94eb60bb1fea78fb",
+		"triggering_actor": "rafaeldtinoco",
+		"workflow": "Build and Run Tests",
+		"workflow_ref": "listendev/jibril/.github/workflows/build-and-run-tests.yaml@refs/pull/373/merge",
+		"workflow_sha": "27bca8119f027a906e72c8ff94eb60bb1fea78fb",
+		"workspace": "/home/runner/work/jibril/jibril"
+	}
+}

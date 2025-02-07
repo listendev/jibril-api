@@ -2,6 +2,8 @@ package client_test
 
 import (
 	"context"
+	"encoding/json"
+	"os"
 	"testing"
 
 	"github.com/alecthomas/assert"
@@ -42,4 +44,42 @@ func TestIngestEvent(t *testing.T) {
 
 func ptr[T any](v T) *T {
 	return &v
+}
+
+func TestIngestUnmarshaledEvents(t *testing.T) {
+	type test struct {
+		name string
+		file string
+	}
+
+	tests := []test{
+		{name: "adult_domain_access", file: "./testdata/adult_domain_access.json"},
+		{name: "flow", file: "./testdata/flow.json"},
+		{name: "drop_ip", file: "./testdata/drop_ip.json"},
+		{name: "filesystem_fingerprint", file: "./testdata/filesystem_fingerprint.json"},
+		{name: "exec_from_unusual_dir", file: "./testdata/exec_from_unusual_dir.json"},
+		{name: "net_scan_tool_exec", file: "./testdata/net_scan_tool_exec.json"},
+		{name: "sudoers_modification", file: "./testdata/sudoers_modification.json"},
+		{name: "interpreter_shell_spawn", file: "./testdata/interpreter_shell_spawn.json"},
+		{name: "net_suspicious_tool_exec", file: "./testdata/net_suspicious_tool_exec.json"},
+		{name: "os_status_fingerprint", file: "./testdata/os_status_fingerprint.json"},
+		{name: "crypto_miner_files", file: "./testdata/crypto_miner_files.json"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			data, err := os.ReadFile(tt.file)
+			assert.NoError(t, err)
+
+			ctx := context.Background()
+			withToken := testclient.WithToken(t)
+
+			var event types.Event
+			assert.NoError(t, json.Unmarshal(data, &event))
+
+			got, err := withToken.IngestEvent(ctx, event)
+			assert.NoError(t, err)
+			assert.NotZero(t, got.ID)
+		})
+	}
 }

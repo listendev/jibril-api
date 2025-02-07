@@ -1,0 +1,191 @@
+{
+	"kind": "exec_from_unusual_dir",
+	"id": "6586c5ae4376aabc679dc3b41b27f65fb1ac7876c64ce11e72d90b72dc54657e",
+	"data": {
+		"body": {
+			"full_info": {
+				"ancestry": [{
+						"start": "2025-02-06T04:25:17Z",
+						"exit": "running",
+						"retcode": 0,
+						"uid": 0,
+						"pid": 1,
+						"ppid": 0,
+						"comm": "systemd",
+						"cmd": "systemd",
+						"exe": "/usr/lib/systemd/systemd",
+						"args": "/sbin/init"
+					},
+					{
+						"start": "2025-02-06T04:25:26Z",
+						"exit": "running",
+						"retcode": 0,
+						"uid": 0,
+						"pid": 710,
+						"ppid": 1,
+						"comm": "provisioner",
+						"cmd": "provisioner",
+						"exe": "/opt/runner/provisioner/provisioner",
+						"args": "/opt/runner/provisioner/provisioner --agentdirectory /home/runner/runners --settings /opt/runner/provisioner/.settings"
+					},
+					{
+						"start": "2025-02-06T04:28:14Z",
+						"exit": "running",
+						"retcode": 0,
+						"uid": 1001,
+						"pid": 1603,
+						"ppid": 710,
+						"comm": "Runner.Listener",
+						"cmd": "Runner.Listener",
+						"exe": "/home/runner/runners/2.322.0/bin/Runner.Listener",
+						"args": "/home/runner/runners/2.322.0/bin/Runner.Listener run"
+					},
+					{
+						"start": "2025-02-06T04:28:16Z",
+						"exit": "running",
+						"retcode": 0,
+						"uid": 1001,
+						"pid": 1617,
+						"ppid": 1603,
+						"comm": "Runner.Worker",
+						"cmd": "Runner.Worker",
+						"exe": "/home/runner/runners/2.322.0/bin/Runner.Worker",
+						"args": "/home/runner/runners/2.322.0/bin/Runner.Worker spawnclient 155 158"
+					},
+					{
+						"start": "2025-02-06T04:30:01Z",
+						"exit": "2025-02-06T04:30:01Z",
+						"retcode": 0,
+						"uid": 1001,
+						"pid": 2268,
+						"ppid": 1617,
+						"comm": "bash",
+						"cmd": "bash",
+						"exe": "/usr/bin/bash",
+						"args": "/usr/bin/bash -e /home/runner/work/_temp/b959dd1c-f056-4a71-92fc-1bb53801cb74.sh"
+					},
+					{
+						"start": "2025-02-06T04:30:01Z",
+						"exit": "2025-02-06T04:30:01Z",
+						"retcode": 0,
+						"uid": 1001,
+						"pid": 2277,
+						"ppid": 2268,
+						"comm": "ls",
+						"cmd": "ls",
+						"exe": "/run/ls",
+						"args": "/var/run/ls"
+					}
+				],
+				"files": {
+					"etc": {
+						"ld.so.cache": "mmap|open|close",
+						"locale.alias": "open|read|close"
+					},
+					"proc": {
+						"filesystems": "open|read|close"
+					},
+					"run": {
+						"ls": "mmap|open|close|execve"
+					},
+					"usr": {
+						"lib": {
+							"locale": {
+								"C.utf8": {
+									"LC_ADDRESS": "mmap|open|close",
+									"LC_COLLATE": "mmap|open|close",
+									"LC_CTYPE": "mmap|open|close",
+									"LC_IDENTIFICATION": "mmap|open|close",
+									"LC_MEASUREMENT": "mmap|open|close",
+									"LC_MESSAGES": {
+										"SYS_LC_MESSAGES": "mmap|open|close"
+									},
+									"LC_MONETARY": "mmap|open|close",
+									"LC_NAME": "mmap|open|close",
+									"LC_NUMERIC": "mmap|open|close",
+									"LC_PAPER": "mmap|open|close",
+									"LC_TELEPHONE": "mmap|open|close",
+									"LC_TIME": "mmap|open|close"
+								},
+								"locale-archive": "mmap|open|close"
+							},
+							"x86_64-linux-gnu": {
+								"gconv": {
+									"gconv-modules.cache": "mmap|open|close"
+								},
+								"ld-linux-x86-64.so.2": "mmap|open|close",
+								"libc.so.6": "mmap|open|read|close",
+								"libpcre2-8.so.0.11.2": "mmap|open|read|close",
+								"libselinux.so.1": "mmap|open|read|close"
+							}
+						}
+					}
+				},
+				"flows": []
+			},
+			"note": "exec_from_unusual_dir_critical_0_7",
+			"parent": {
+				"start": "2025-02-06T04:30:01Z",
+				"exit": "2025-02-06T04:30:01Z",
+				"retcode": 0,
+				"uid": 1001,
+				"pid": 2268,
+				"ppid": 1617,
+				"comm": "bash",
+				"cmd": "bash",
+				"exe": "/usr/bin/bash",
+				"args": "/usr/bin/bash -e /home/runner/work/_temp/b959dd1c-f056-4a71-92fc-1bb53801cb74.sh"
+			},
+			"process": {
+				"start": "2025-02-06T04:30:01Z",
+				"exit": "2025-02-06T04:30:01Z",
+				"retcode": 0,
+				"uid": 1001,
+				"pid": 2277,
+				"ppid": 2268,
+				"comm": "ls",
+				"cmd": "ls",
+				"exe": "/run/ls",
+				"args": "/var/run/ls"
+			}
+		},
+		"head": {
+			"name": "exec_from_unusual_dir",
+			"version": "v1.0",
+			"format": "execution",
+			"description": "Execution from unusual directory",
+			"documentation": "https://listendev.github.io/jibril/dev/detections/exec_from_unusual_dir/",
+			"category": "execution",
+			"mechanism": "execution",
+			"method": "user_execution",
+			"importance": "high"
+		}
+	},
+	"github_context": {
+		"action": "15. Execute binary from unusual dirs",
+		"actor": "rafaeldtinoco",
+		"actor_id": "7395852",
+		"event_name": "pull_request",
+		"job": "run",
+		"ref": "refs/pull/373/merge",
+		"ref_name": "373/merge",
+		"ref_protected": false,
+		"ref_type": "branch",
+		"repository": "listendev/jibril",
+		"repository_id": "785073365",
+		"repository_owner": "listendev",
+		"repository_owner_id": "103680976",
+		"run_attempt": "1",
+		"run_id": "13171784858",
+		"run_number": "200",
+		"runner_arch": "X64",
+		"runner_os": "Linux",
+		"server_url": "https://github.com",
+		"sha": "27bca8119f027a906e72c8ff94eb60bb1fea78fb",
+		"triggering_actor": "rafaeldtinoco",
+		"workflow": "Build and Run Tests",
+		"workflow_ref": "listendev/jibril/.github/workflows/build-and-run-tests.yaml@refs/pull/373/merge",
+		"workflow_sha": "27bca8119f027a906e72c8ff94eb60bb1fea78fb",
+		"workspace": "/home/runner/work/jibril/jibril"
+	}
+}

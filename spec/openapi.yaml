@@ -207,6 +207,12 @@ components:
         resolve_flow:
           $ref: "#/components/schemas/Flow"
           nullable: true
+        head:
+          $ref: "#/components/schemas/EventHead"
+          nullable: true
+        note:
+          type: string
+          nullable: true
     FullInfo:
       type: object
       properties:
@@ -340,4 +346,25 @@ components:
         prev_args:
           type: string
         prev_loader:
+          type: string
+    EventHead:
+      type: object
+      properties:
+        name:
+          type: string
+        version:
+          type: string
+        format:
+          type: string
+        description:
+          type: string
+        documentation:
+          type: string
+        category:
+          type: string
+        mechanism:
+          type: string
+        method:
+          type: string
+        importance:
           type: string
