@@ -15,12 +15,12 @@ const (
 type EventKind string
 
 const (
-	// Network Flow Events
+	// Network Flow Events.
 	EventKindDropIP     EventKind = "drop_ip"
 	EventKindDropDomain EventKind = "drop_domain"
 	EventKindFlow       EventKind = "flow"
 
-	// File Access Detection Events
+	// File Access Detection Events.
 	EventKindCapabilitiesModification      EventKind = "capabilities_modification"
 	EventKindCodeModificationThroughProcfs EventKind = "code_modification_through_procfs"
 	EventKindCorePatternAccess             EventKind = "core_pattern_access"
@@ -47,7 +47,7 @@ const (
 	EventKindCryptoMinerFiles              EventKind = "crypto_miner_files"
 	EventKindAuthLogsTamper                EventKind = "auth_logs_tamper"
 
-	// Execution Detection Events
+	// Execution Detection Events.
 	EventKindBinaryExecutedByLoader EventKind = "binary_executed_by_loader"
 	EventKindCodeOnTheFly           EventKind = "code_on_the_fly"
 	EventKindDataEncoderExec        EventKind = "data_encoder_exec"
@@ -68,7 +68,7 @@ const (
 	EventKindWebserverShellExec     EventKind = "webserver_shell_exec"
 	EventKindCryptoMinerExecution   EventKind = "crypto_miner_execution"
 
-	// Network Peer Detection Events
+	// Network Peer Detection Events.
 	EventKindAdultDomainAccess      EventKind = "adult_domain_access"
 	EventKindBadwareDomainAccess    EventKind = "badware_domain_access"
 	EventKindDynDNSDomainAccess     EventKind = "dyndns_domain_access"
@@ -148,6 +148,7 @@ func (k EventKind) OK() bool {
 
 	return false
 }
+
 func (e *Event) Validate() error {
 	if e.ID == "" {
 		return ErrIDcannotBeEmpty
@@ -163,23 +164,12 @@ func (e *Event) Validate() error {
 // Event is something that happened in the system.
 // Can be of different types but more or less every events has same properties.
 type Event struct {
-	ID string `json:"id"`
-	// projectID is the ID of the listen.dev project.
-	projectID string
-	// orgID is the ID of the listen.dev organization.
-	orgID         string
-	Data          EventData      `json:"data"`
-	GithubContext *GitHubContext `json:"github_context,omitempty"`
-	Kind          EventKind      `json:"kind"`
-	CreatedAt     time.Time      `json:"createdAt"`
-	UpdatedAt     time.Time      `json:"updatedAt"`
-}
-
-func (e Event) WithListenDevInfo(projectID, orgID string) Event {
-	e.projectID = projectID
-	e.orgID = orgID
-
-	return e
+	ID        string    `json:"id"`
+	AgentID   string    `json:"agent_id"`
+	Data      EventData `json:"data"`
+	Kind      EventKind `json:"kind"`
+	CreatedAt time.Time `json:"createdAt"`
+	UpdatedAt time.Time `json:"updatedAt"`
 }
 
 type EventData struct {
@@ -194,7 +184,7 @@ type EventData struct {
 	Head        *EventHead `json:"head,omitempty"`
 }
 
-// EventHead represents the metadata for an event
+// EventHead represents the metadata for an event.
 type EventHead struct {
 	Name          string `json:"name"`
 	Version       string `json:"version"`

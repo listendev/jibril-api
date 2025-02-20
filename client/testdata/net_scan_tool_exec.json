@@ -1,6 +1,7 @@
 {
 	"kind": "net_scan_tool_exec",
 	"id": "8d0d69b1-3cd7-4b0e-9d20-b1b8407edaa5",
+	"agent_id": "35f06517-01cd-4a61-9b21-10927fcc92e7",
 	"data": {
 		"body": {
 			"full_info": {
@@ -3011,32 +3012,5 @@
 			"method": "network_service_scanning",
 			"importance": "critical"
 		}
-	},
-	"github_context": {
-		"action": "16. Network scan tool",
-		"actor": "rafaeldtinoco",
-		"actor_id": "7395852",
-		"event_name": "pull_request",
-		"job": "run",
-		"ref": "refs/pull/373/merge",
-		"ref_name": "373/merge",
-		"ref_protected": false,
-		"ref_type": "branch",
-		"repository": "listendev/jibril",
-		"repository_id": "785073365",
-		"repository_owner": "listendev",
-		"repository_owner_id": "103680976",
-		"run_attempt": "1",
-		"run_id": "13171784858",
-		"run_number": "200",
-		"runner_arch": "X64",
-		"runner_os": "Linux",
-		"server_url": "https://github.com",
-		"sha": "27bca8119f027a906e72c8ff94eb60bb1fea78fb",
-		"triggering_actor": "rafaeldtinoco",
-		"workflow": "Build and Run Tests",
-		"workflow_ref": "listendev/jibril/.github/workflows/build-and-run-tests.yaml@refs/pull/373/merge",
-		"workflow_sha": "27bca8119f027a906e72c8ff94eb60bb1fea78fb",
-		"workspace": "/home/runner/work/jibril/jibril"
 	}
 }

@@ -90,18 +90,12 @@ components:
       properties:
         id:
           type: string
-        project_id:
+        agent_id:
           type: string
-          description: It is the ID of the listen.dev project.
-        org_id:
-          type: string
-          description: It is the ID of the listen.dev organization.
-        kind:
-          type: string
-        github_context:
-          $ref: "#/components/schemas/GitHubContext"
         data:
           $ref: "#/components/schemas/Data"
+        kind:
+          type: string
         createdAt:
           type: string
           format: date-time
@@ -368,3 +362,42 @@ components:
           type: string
         importance:
           type: string
+    Agent:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        os:
+          type: string
+        arch:
+          type: string
+        hostname:
+          type: string
+        version:
+          type: string
+        edition:
+          type: string
+        ip:
+          type: string
+        machine_id:
+          type: string
+        labels:
+          type: object
+          additionalProperties:
+            type: string
+        metadata:
+          type: string
+        kind:
+          type: string
+        context_id:
+          type: string
+          format: uuid
+        active:
+          type: boolean
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time

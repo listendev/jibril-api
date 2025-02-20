@@ -1,6 +1,7 @@
 {
 	"kind": "flow",
-    "id": "ede8c94990ef6af7adbc81a71121bc3cb6a3fa13972a855148ba47c30ef0042c",
+    "id": "d469f35c-2715-4e07-9b13-87a79c59d2c9",
+	"agent_id": "35f06517-01cd-4a61-9b21-10927fcc92e7",
 	"data": {
 		"body": {
 			"flow": {
@@ -318,32 +319,5 @@
 				"args": "curl -s --connect-timeout 5 -m 5 -o /dev/null https://www.uol.com.br"
 			}
 		}
-	},
-	"github_context": {
-		"action": "10. Network curl test 02",
-		"actor": "rafaeldtinoco",
-		"actor_id": "7395852",
-		"event_name": "pull_request",
-		"job": "run",
-		"ref": "refs/pull/373/merge",
-		"ref_name": "373/merge",
-		"ref_protected": false,
-		"ref_type": "branch",
-		"repository": "listendev/jibril",
-		"repository_id": "785073365",
-		"repository_owner": "listendev",
-		"repository_owner_id": "103680976",
-		"run_attempt": "1",
-		"run_id": "13171784858",
-		"run_number": "200",
-		"runner_arch": "X64",
-		"runner_os": "Linux",
-		"server_url": "https://github.com",
-		"sha": "27bca8119f027a906e72c8ff94eb60bb1fea78fb",
-		"triggering_actor": "rafaeldtinoco",
-		"workflow": "Build and Run Tests",
-		"workflow_ref": "listendev/jibril/.github/workflows/build-and-run-tests.yaml@refs/pull/373/merge",
-		"workflow_sha": "27bca8119f027a906e72c8ff94eb60bb1fea78fb",
-		"workspace": "/home/runner/work/jibril/jibril"
 	}
 }

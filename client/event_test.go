@@ -6,9 +6,11 @@ import (
 	"os"
 	"testing"
 
-	"github.com/alecthomas/assert"
+	"github.com/ghetzel/testify/require"
+	"github.com/google/uuid"
 	"github.com/listendev/jibril-server/client/testclient"
 	"github.com/listendev/jibril-server/types"
+	"github.com/stretchr/testify/assert"
 )
 
 func TestIngestEvent(t *testing.T) {
@@ -17,8 +19,9 @@ func TestIngestEvent(t *testing.T) {
 
 	t.Run("ok", func(t *testing.T) {
 		event := types.Event{
-			ID:   "test-id",
-			Kind: types.EventKindDropDomain,
+			ID:      uuid.New().String(),
+			AgentID: uuid.New().String(),
+			Kind:    types.EventKindDropDomain,
 			Data: types.EventData{
 				Process: &types.Process{
 					Cmd: ptr("test-cmd"),
@@ -27,9 +30,20 @@ func TestIngestEvent(t *testing.T) {
 			},
 		}
 
-		got, err := withToken.IngestEvent(ctx, event)
-		assert.NoError(t, err)
-		assert.NotZero(t, got.ID)
+		{
+			got, err := withToken.IngestEvent(ctx, event)
+			require.NoError(t, err)
+			assert.NotZero(t, got.ID)
+		}
+
+		// update event with same ID
+		event.Data.Process.Cmd = ptr("updated-cmd")
+
+		{
+			got, err := withToken.IngestEvent(ctx, event)
+			require.NoError(t, err)
+			assert.NotZero(t, got.ID)
+		}
 	})
 
 	t.Run("invalid event kind", func(t *testing.T) {
@@ -69,16 +83,17 @@ func TestIngestUnmarshaledEvents(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			data, err := os.ReadFile(tt.file)
-			assert.NoError(t, err)
+			require.NoError(t, err)
 
 			ctx := context.Background()
 			withToken := testclient.WithToken(t)
 
 			var event types.Event
-			assert.NoError(t, json.Unmarshal(data, &event))
+
+			require.NoError(t, json.Unmarshal(data, &event))
 
 			got, err := withToken.IngestEvent(ctx, event)
-			assert.NoError(t, err)
+			require.NoError(t, err)
 			assert.NotZero(t, got.ID)
 		})
 	}

@@ -30,7 +30,7 @@ func New(baseURL, pat string) *Client {
 	}
 }
 
-// Clone creates a copy of the client
+// Clone creates a copy of the client.
 func (c *Client) Clone() *Client {
 	return &Client{
 		BaseClient:  c.BaseClient,
@@ -41,7 +41,7 @@ func (c *Client) Clone() *Client {
 	}
 }
 
-// SetToken sets the JWT token for authentication
+// SetToken sets the JWT token for authentication.
 func (c *Client) SetToken(token string) {
 	// @TODO: federico to fill with test client logit for JWT
 	c.JWT = token
@@ -49,18 +49,21 @@ func (c *Client) SetToken(token string) {
 
 func (c *Client) do(ctx context.Context, out any, method, path string, body any) error {
 	var bodyReader io.Reader
+
 	if body != nil {
 		if method == http.MethodPost || method == http.MethodPatch || method == http.MethodPut {
 			var buff bytes.Buffer
 			if err := json.NewEncoder(&buff).Encode(body); err != nil {
 				return fmt.Errorf("encode request body: %w", err)
 			}
+
 			bodyReader = &buff
 		} else {
 			values, err := c.formEncoder.Encode(body)
 			if err != nil {
 				return fmt.Errorf("encode request body: %w", err)
 			}
+
 			path = strings.TrimRight(path, "?") + "?" + values.Encode()
 		}
 	}
@@ -92,6 +95,7 @@ func (c *Client) do(ctx context.Context, out any, method, path string, body any)
 		if err != nil {
 			return fmt.Errorf("read error response body: %w", err)
 		}
+
 		return fmt.Errorf("unexpected status code %d: %s", resp.StatusCode, string(b))
 	}
 
