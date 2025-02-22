@@ -14,13 +14,13 @@ import (
 	"time"
 
 	"github.com/golang-migrate/migrate/v4"
-	"github.com/golang-migrate/migrate/v4/database/postgres"
+	dbDriver "github.com/golang-migrate/migrate/v4/database/postgres"
 	_ "github.com/golang-migrate/migrate/v4/source/file" // Import file driver to load migrations
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/listendev/jibril-server/client"
+	"github.com/listendev/jibril-server/postgres"
 	"github.com/listendev/jibril-server/server"
 	"github.com/listendev/jibril-server/service"
-	"github.com/listendev/jibril-server/store"
 	"github.com/ory/dockertest/v3"
 	"github.com/ory/dockertest/v3/docker"
 )
@@ -143,12 +143,12 @@ func newHarness(ctx context.Context) (*harness, error) {
 		return nil, fmt.Errorf("open postgres connection: %w", err)
 	}
 
-	driver, err := postgres.WithInstance(db, &postgres.Config{})
+	driver, err := dbDriver.WithInstance(db, &dbDriver.Config{})
 	if err != nil {
 		return nil, fmt.Errorf("create migration driver: %w", err)
 	}
 
-	m, err := migrate.NewWithDatabaseInstance("file://../db/migrations", "postgres", driver)
+	m, err := migrate.NewWithDatabaseInstance("file://../postgres/migrations", "postgres", driver)
 	if err != nil {
 		return nil, fmt.Errorf("create migration instance: %w", err)
 	}
@@ -158,9 +158,7 @@ func newHarness(ctx context.Context) (*harness, error) {
 	}
 
 	logger.Info("Migrations complete")
-
-	psqlStore := store.NewPsqlStore(h.psqlDB)
-	svc := &service.Service{Store: psqlStore}
+	svc := &service.Service{Repo: postgres.NewRepository(h.psqlDB)}
 	handler := server.NewHandler(logger, svc, "")
 
 	h.server = httptest.NewServer(handler)
