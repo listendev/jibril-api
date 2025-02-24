@@ -159,7 +159,7 @@ func newHarness(ctx context.Context) (*harness, error) {
 
 	logger.Info("Migrations complete")
 	svc := &service.Service{Repo: postgres.NewRepository(h.psqlDB)}
-	handler := server.NewHandler(logger, svc, "")
+	handler := server.NewHandler(logger, svc, "", 1)
 
 	h.server = httptest.NewServer(handler)
 	h.client = client.New(h.server.URL, "")

@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -100,6 +101,10 @@ func (c *Client) do(ctx context.Context, out any, method, path string, body any)
 	}
 
 	if err := json.NewDecoder(resp.Body).Decode(&out); err != nil {
+		if errors.Is(err, io.EOF) { // no body returned
+			return nil
+		}
+
 		return fmt.Errorf("decode response body: %w", err)
 	}
 

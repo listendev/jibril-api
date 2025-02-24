@@ -4,7 +4,10 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"net"
 	"time"
+
+	"github.com/listendev/jibril-server/types/errs"
 )
 
 type AgentKind string
@@ -66,39 +69,6 @@ func (l *AgentLabels) Scan(value interface{}) error {
 	}
 }
 
-// AgentGithubContext represents GitHub-specific context.
-type AgentGithubContext struct {
-	Repository     string `json:"repository"`
-	Owner          string `json:"owner"`
-	InstallationID int64  `json:"installation_id"`
-	// Extra fields
-}
-
-func (c *AgentGithubContext) Validate() error {
-	if c == nil {
-		return errors.New("github context is required")
-	}
-
-	var errs []string
-	if c.Repository == "" {
-		errs = append(errs, "repository is required")
-	}
-
-	if c.Owner == "" {
-		errs = append(errs, "owner is required")
-	}
-
-	if c.InstallationID == 0 {
-		errs = append(errs, "installation_id is required")
-	}
-
-	if len(errs) > 0 {
-		return fmt.Errorf("invalid github context: %s", join(errs, ", "))
-	}
-
-	return nil
-}
-
 // AgentKubernetesContext represents Kubernetes-specific context.
 type AgentKubernetesContext struct {
 	Cluster   string `json:"cluster"`
@@ -120,7 +90,7 @@ func (c *AgentKubernetesContext) Validate() error {
 	}
 
 	if len(errs) > 0 {
-		return fmt.Errorf("invalid kubernetes context: %s", join(errs, ", "))
+		return fmt.Errorf("invalid kubernetes context: %s", join(errs))
 	}
 
 	return nil
@@ -129,6 +99,7 @@ func (c *AgentKubernetesContext) Validate() error {
 // Agent represents the stored agent model.
 type Agent struct {
 	ID                string                  `db:"id"         json:"id"`
+	ProjectID         string                  `db:"project_id" json:"project_id"`
 	OS                string                  `db:"os"         json:"os"`
 	Arch              string                  `db:"arch"       json:"arch"`
 	Hostname          string                  `db:"hostname"   json:"hostname"`
@@ -137,7 +108,7 @@ type Agent struct {
 	MachineID         string                  `db:"machine_id" json:"machine_id"`
 	Labels            AgentLabels             `db:"labels"     json:"labels"`
 	Kind              AgentKind               `db:"kind"       json:"kind"`
-	GithubContext     *AgentGithubContext     `db:"-"          json:"github_context,omitempty"`
+	GithubContext     *GitHubContext          `db:"-"          json:"github_context,omitempty"`
 	KubernetesContext *AgentKubernetesContext `db:"-"          json:"kubernetes_context,omitempty"`
 	Active            bool                    `db:"active"     json:"active"`
 	CreatedAt         time.Time               `db:"created_at" json:"created_at"`
@@ -146,6 +117,7 @@ type Agent struct {
 
 // CreateAgent represents the request to create a new agent.
 type CreateAgent struct {
+	ProjectID string      `json:"project_id"`
 	OS        string      `json:"os"`
 	Arch      string      `json:"arch"`
 	Hostname  string      `json:"hostname"`
@@ -155,13 +127,17 @@ type CreateAgent struct {
 	Labels    AgentLabels `json:"labels"`
 	Kind      AgentKind   `json:"kind"`
 
-	GithubContext     *AgentGithubContext     `json:"github_context,omitempty"`
+	GithubContext     *GitHubContext          `json:"github_context,omitempty"`
 	KubernetesContext *AgentKubernetesContext `json:"kubernetes_context,omitempty"`
 }
 
+const (
+	ErrInvalidAgentType = errs.InvalidArgumentError("invalid agent kind")
+)
+
 func (c *CreateAgent) Validate() error {
 	if !c.Kind.IsValid() {
-		return errors.New("invalid agent kind")
+		return ErrInvalidAgentType
 	}
 
 	var errs []string
@@ -181,6 +157,11 @@ func (c *CreateAgent) Validate() error {
 		errs = append(errs, "version is required")
 	}
 
+	ip := net.ParseIP(c.IP)
+	if ip == nil {
+		errs = append(errs, "invalid ip")
+	}
+
 	if c.IP == "" {
 		errs = append(errs, "ip is required")
 	}
@@ -190,7 +171,7 @@ func (c *CreateAgent) Validate() error {
 	}
 
 	if len(errs) > 0 {
-		return fmt.Errorf("invalid agent: %s", join(errs, ", "))
+		return fmt.Errorf("invalid agent: %s", join(errs))
 	}
 
 	// Validate context based on Kind
@@ -201,25 +182,68 @@ func (c *CreateAgent) Validate() error {
 		return c.KubernetesContext.Validate()
 	}
 
+	if c.GithubContext == nil && c.KubernetesContext == nil {
+		return errors.New("at least one context is required")
+	}
+
 	return nil
+}
+
+type AgentCreated struct {
+	ID         string `json:"id"`
+	AgentToken string `json:"agent_token"`
 }
 
 // UpdateAgent represents the request to update an existing agent.
 type UpdateAgent struct {
-	OS       *string      `json:"os,omitempty"`
-	Arch     *string      `json:"arch,omitempty"`
-	Hostname *string      `json:"hostname,omitempty"`
-	Version  *string      `json:"version,omitempty"`
-	IP       *string      `json:"ip,omitempty"`
-	Labels   *AgentLabels `json:"labels,omitempty"`
-	Active   *bool        `json:"active,omitempty"`
+	OS        *string `json:"os,omitempty"`
+	Arch      *string `json:"arch,omitempty"`
+	Hostname  *string `json:"hostname,omitempty"`
+	Version   *string `json:"version,omitempty"`
+	IP        *string `json:"ip,omitempty"`
+	MachineID *string `json:"machine_id,omitempty"`
+}
 
-	GithubContext     *AgentGithubContext     `json:"github_context,omitempty"`
-	KubernetesContext *AgentKubernetesContext `json:"kubernetes_context,omitempty"`
+func (a *UpdateAgent) Validate() error {
+	if a.OS == nil && a.Arch == nil && a.Hostname == nil && a.Version == nil && a.IP == nil && a.MachineID == nil {
+		return errors.New("at least one field is required")
+	}
+
+	var errs []string
+
+	if a.OS != nil && *a.OS == "" {
+		errs = append(errs, "os valid but empty")
+	}
+
+	if a.Arch != nil && *a.Arch == "" {
+		errs = append(errs, "arch valid but empty")
+	}
+
+	if a.Hostname != nil && *a.Hostname == "" {
+		errs = append(errs, "hostname valid but empty")
+	}
+
+	if a.Version != nil && *a.Version == "" {
+		errs = append(errs, "version valid but empty")
+	}
+
+	if a.IP != nil && *a.IP == "" {
+		errs = append(errs, "ip valid but empty")
+	}
+
+	if a.MachineID != nil && *a.MachineID == "" {
+		errs = append(errs, "machine_id valid but empty")
+	}
+
+	if len(errs) > 0 {
+		return fmt.Errorf("invalid update agent: %s", join(errs))
+	}
+
+	return nil
 }
 
 // Helper function to join error messages.
-func join(strs []string, sep string) string {
+func join(strs []string) string {
 	if len(strs) == 0 {
 		return ""
 	}
@@ -230,7 +254,7 @@ func join(strs []string, sep string) string {
 
 	result := strs[0]
 	for _, s := range strs[1:] {
-		result += sep + s
+		result += "," + s
 	}
 
 	return result
