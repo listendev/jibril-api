@@ -167,6 +167,78 @@ paths:
           description: Unauthorized
         "500":
           description: Internal server error
+    get:
+      security:
+        - BearerAuth: []
+      summary: Query agents returning list of agents
+      operationId: listAgents
+      parameters:
+      - name: filters
+        in: query
+        description: Filters for querying agents
+        required: false
+        style: form
+        explode: true
+        schema:
+          $ref: "#/components/schemas/AgentFilters"
+
+      - name: labels
+        in: query
+        description: Labels for querying agents
+        required: false
+        style: form
+        explode: true
+        schema:
+          type: object
+        example:
+          label.mylabel: value1
+
+      - name: first
+        in: query
+        description: Number of items to return from the start
+        required: false
+        schema:
+          type: integer
+          minimum: 1
+
+      - name: after
+        in: query
+        description: Cursor for paginating forward
+        required: false
+        schema:
+          type: string
+
+      - name: last
+        in: query
+        description: Number of items to return from the end
+        required: false
+        schema:
+          type: integer
+          minimum: 1
+
+      - name: before
+        in: query
+        description: Cursor for paginating backward
+        required: false
+        schema:
+          type: string
+      responses:
+        "200":
+          description: Object with list of agents and pagination
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Page"
+        "400":
+          description: Invalid input
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          description: Unauthorized
+        "500":
+          description: Internal server error
   /healthz:
     get:
       security: []
@@ -608,3 +680,51 @@ components:
           type: string
         agent_id:
           type: string
+    Page:
+      type: object
+      properties:
+        items:
+          type: array
+          items:
+            type: object
+            description: Generic item
+        pageInfo:
+          $ref: '#/components/schemas/PageInfo'
+    PageInfo:
+      type: object
+      properties:
+        hasNextPage:
+          type: boolean
+        endCursor:
+          type: string
+          nullable: true
+        hasPrevPage:
+          type: boolean
+        startCursor:
+          type: string
+          nullable: true
+    AgentFilters:
+      type: object
+      properties:
+        os:
+          type: string
+          description: Operating system of the agent
+        arch:
+          type: string
+          description: Architecture of the agent (e.g., x86, arm)
+        hostname:
+          type: string
+          description: Hostname of the agent
+        version:
+          type: string
+          description: Version of the agent software
+        ip:
+          type: string
+          format: ipv4
+          description: IP address of the agent
+        machine_id:
+          type: string
+          description: Unique machine identifier
+        kind:
+          $ref: "#/components/schemas/AgentKind"
+          description: Kind of agent

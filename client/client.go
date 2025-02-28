@@ -52,21 +52,12 @@ func (c *Client) do(ctx context.Context, out any, method, path string, body any)
 	var bodyReader io.Reader
 
 	if body != nil {
-		if method == http.MethodPost || method == http.MethodPatch || method == http.MethodPut {
-			var buff bytes.Buffer
-			if err := json.NewEncoder(&buff).Encode(body); err != nil {
-				return fmt.Errorf("encode request body: %w", err)
-			}
-
-			bodyReader = &buff
-		} else {
-			values, err := c.formEncoder.Encode(body)
-			if err != nil {
-				return fmt.Errorf("encode request body: %w", err)
-			}
-
-			path = strings.TrimRight(path, "?") + "?" + values.Encode()
+		var buff bytes.Buffer
+		if err := json.NewEncoder(&buff).Encode(body); err != nil {
+			return fmt.Errorf("encode request body: %w", err)
 		}
+
+		bodyReader = &buff
 	}
 
 	req, err := http.NewRequestWithContext(ctx, method, c.endpoint(path), bodyReader)

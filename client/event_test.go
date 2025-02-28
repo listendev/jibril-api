@@ -1,7 +1,6 @@
 package client_test
 
 import (
-	"context"
 	"encoding/json"
 	"os"
 	"testing"
@@ -14,7 +13,7 @@ import (
 )
 
 func TestIngestEvent(t *testing.T) {
-	ctx := context.Background()
+	ctx := t.Context()
 	withToken := testclient.WithToken(t)
 
 	t.Run("ok", func(t *testing.T) {
@@ -85,7 +84,7 @@ func TestIngestUnmarshaledEvents(t *testing.T) {
 			data, err := os.ReadFile(tt.file)
 			require.NoError(t, err)
 
-			ctx := context.Background()
+			ctx := t.Context()
 			withToken := testclient.WithToken(t)
 
 			var event types.Event

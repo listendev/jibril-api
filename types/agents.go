@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"net"
+	"net/url"
 	"time"
 
 	"github.com/listendev/jibril-server/types/errs"
@@ -67,6 +68,36 @@ func (l *AgentLabels) Scan(value interface{}) error {
 	default:
 		return fmt.Errorf("unsupported type for AgentLabels: %T", value)
 	}
+}
+
+// The format is: label.key=value (e.g., label.environment=production).
+func (l *AgentLabels) Encode() url.Values {
+	values := url.Values{}
+
+	if l == nil {
+		return values
+	}
+
+	for key, value := range *l {
+		values.Set("label."+key, value)
+	}
+
+	return values
+}
+
+// DecodeAgentLabels extracts AgentLabels from URL query parameters.
+func DecodeAgentLabels(values url.Values) AgentLabels {
+	labels := AgentLabels{}
+
+	prefix := "label."
+	for key, vals := range values {
+		if len(vals) > 0 && len(key) > len(prefix) && key[:len(prefix)] == prefix {
+			labelKey := key[len(prefix):]
+			labels[labelKey] = vals[0]
+		}
+	}
+
+	return labels
 }
 
 // AgentKubernetesContext represents Kubernetes-specific context.
@@ -258,4 +289,117 @@ func join(strs []string) string {
 	}
 
 	return result
+}
+
+type ListAgents struct {
+	Labels  AgentLabels   `json:"labels,omitempty"`
+	Filters *AgentFilters `json:"filters,omitempty"`
+	PageArgs
+}
+
+func (q *ListAgents) Validate() error {
+	if q.Filters != nil {
+		if q.Filters.IP != nil {
+			ip := net.ParseIP(*q.Filters.IP)
+			if ip == nil {
+				return errors.New("invalid ip")
+			}
+		}
+	}
+
+	return nil
+}
+
+// AgentFilters provides strongly typed filtering options for agents.
+type AgentFilters struct {
+	OS        *string `json:"os,omitempty"`
+	Arch      *string `json:"arch,omitempty"`
+	Hostname  *string `json:"hostname,omitempty"`
+	Version   *string `json:"version,omitempty"`
+	IP        *string `json:"ip,omitempty"`
+	MachineID *string `json:"machine_id,omitempty"`
+	Kind      *string `json:"kind,omitempty"`
+}
+
+func (f *AgentFilters) Encode() url.Values {
+	values := url.Values{}
+
+	if f == nil {
+		return values
+	}
+
+	if f.OS != nil {
+		values.Set("filter.os", *f.OS)
+	}
+
+	if f.Arch != nil {
+		values.Set("filter.arch", *f.Arch)
+	}
+
+	if f.Hostname != nil {
+		values.Set("filter.hostname", *f.Hostname)
+	}
+
+	if f.Version != nil {
+		values.Set("filter.version", *f.Version)
+	}
+
+	if f.IP != nil {
+		values.Set("filter.ip", *f.IP)
+	}
+
+	if f.MachineID != nil {
+		values.Set("filter.machine_id", *f.MachineID)
+	}
+
+	if f.Kind != nil {
+		values.Set("filter.kind", *f.Kind)
+	}
+
+	return values
+}
+
+// DecodeAgentFilters extracts AgentFilters from URL query parameters.
+func DecodeAgentFilters(values url.Values) *AgentFilters {
+	filters := &AgentFilters{}
+
+	if os := values.Get("filter.os"); os != "" {
+		filters.OS = &os
+	}
+
+	if arch := values.Get("filter.arch"); arch != "" {
+		filters.Arch = &arch
+	}
+
+	if hostname := values.Get("filter.hostname"); hostname != "" {
+		filters.Hostname = &hostname
+	}
+
+	if version := values.Get("filter.version"); version != "" {
+		filters.Version = &version
+	}
+
+	if ip := values.Get("filter.ip"); ip != "" {
+		filters.IP = &ip
+	}
+
+	if machineID := values.Get("filter.machine_id"); machineID != "" {
+		filters.MachineID = &machineID
+	}
+
+	if kind := values.Get("filter.kind"); kind != "" {
+		filters.Kind = &kind
+	}
+
+	if filters.IsEmpty() {
+		return nil
+	}
+
+	return filters
+}
+
+// IsEmpty checks if all filters are nil.
+func (f AgentFilters) IsEmpty() bool {
+	return f.OS == nil && f.Arch == nil && f.Hostname == nil &&
+		f.Version == nil && f.IP == nil && f.MachineID == nil && f.Kind == nil
 }
