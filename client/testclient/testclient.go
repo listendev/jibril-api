@@ -1,8 +1,10 @@
-// Package testclient implements the full test server harness and client to unit tests on client side.
+// Package testclient implements a test server harness and client for unit tests.
 package testclient
 
+//nolint:goimports
 import (
 	"context"
+	"crypto/rand"
 	"database/sql"
 	"errors"
 	"flag"
@@ -13,9 +15,12 @@ import (
 	"testing"
 	"time"
 
+	"github.com/golang-jwt/jwt"
 	"github.com/golang-migrate/migrate/v4"
 	dbDriver "github.com/golang-migrate/migrate/v4/database/postgres"
-	_ "github.com/golang-migrate/migrate/v4/source/file" // Import file driver to load migrations
+	// Import file driver to load migrations from filesystem.
+	_ "github.com/golang-migrate/migrate/v4/source/file"
+	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/listendev/jibril-server/client"
 	"github.com/listendev/jibril-server/postgres"
@@ -25,7 +30,11 @@ import (
 	"github.com/ory/dockertest/v3/docker"
 )
 
-var testHarness *harness
+var (
+	testHarness *harness
+	jwtSecret   []byte
+	jwtExpDays  = 365 // JWT token expiration in days
+)
 
 type harness struct {
 	psqlDB     *pgxpool.Pool
@@ -35,25 +44,17 @@ type harness struct {
 	closeFns   []func() error
 }
 
-func (h *harness) registerStop(fn func() error) {
-	h.closeFns = append(h.closeFns, fn)
-}
-
-func (h *harness) stop() error {
-	h.server.Close()
-
-	for _, fn := range h.closeFns {
-		if err := fn(); err != nil {
-			return err
-		}
-	}
-
-	return nil
-}
-
 // MustSetup initializes the test harness. Should be called from TestMain.
 func MustSetup(m *testing.M) {
 	flag.Parse()
+
+	// Generate JWT secret once
+	var err error
+	jwtSecret = make([]byte, 32) // 32 bytes for a 256-bit key
+	if _, err = rand.Read(jwtSecret); err != nil {
+		fmt.Fprintf(os.Stderr, "Failed to generate JWT secret: %v\n", err)
+		os.Exit(1)
+	}
 
 	code, err := setup(m)
 	if err != nil {
@@ -70,17 +71,14 @@ func setup(m *testing.M) (int, error) {
 	}
 
 	ctx := context.Background()
-
 	h, err := newHarness(ctx)
 	if err != nil {
 		return 0, fmt.Errorf("create test harness: %w", err)
 	}
 
 	testHarness = h
-
 	defer func() {
-		err := h.stop()
-		if err != nil {
+		if err := h.stop(); err != nil {
 			fmt.Fprintln(os.Stderr, err)
 		}
 	}()
@@ -88,96 +86,81 @@ func setup(m *testing.M) (int, error) {
 	return m.Run(), nil
 }
 
-// WithToken returns a new test client with a test token.
+// WithToken returns a new test client with a token for a new project.
 func WithToken(t *testing.T) *client.Client {
 	t.Helper()
+	return WithProject(t, uuid.New().String())
+}
+
+// WithProject returns a client with a token for the specified project ID.
+func WithProject(t *testing.T, projectID string) *client.Client {
+	t.Helper()
+
+	token, err := createToken(projectID, "", "")
+	if err != nil {
+		t.Fatalf("Failed to create token: %v", err)
+	}
 
 	c := testHarness.client.Clone()
-	c.SetToken("eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJleHBpcmF0aW9uIjoxNzcwMjE4ODg3OTA1LCJmcm9udGVuZCI6dHJ1ZSwib3JnX2lkIjoibXktb3JnIiwicHJvamVjdF9pZCI6Im15LXByb2plY3QiLCJ1c2VyX2lkIjoibXktdXNlciJ9.LF-MTbCrdB7CYvthnA38MSYrZIrIBOIgBoiJO8WGiNA")
-
+	c.SetToken(token)
 	return c
 }
 
-func newHarness(ctx context.Context) (*harness, error) {
-	h := &harness{}
+// Helper to create a JWT token with the global secret.
+func createToken(projectID, userID, orgID string) (string, error) {
+	if userID == "" {
+		userID = uuid.New().String()
+	}
+	if orgID == "" {
+		orgID = uuid.New().String()
+	}
 
-	var err error
+	claims := jwt.MapClaims{
+		"frontend":   true,
+		"expiration": time.Now().UTC().Add(time.Hour * 24 * time.Duration(jwtExpDays)).UnixMilli(),
+		"project_id": projectID,
+		"user_id":    userID,
+		"org_id":     orgID,
+	}
 
-	logger := slog.New(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{
-		Level: slog.LevelDebug,
-	}))
-
-	h.dockerPool, err = setupDockerPool()
+	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
+	tokenString, err := token.SignedString(jwtSecret)
 	if err != nil {
+		return "", err
+	}
+
+	return tokenString, nil
+}
+
+func (h *harness) stop() error {
+	h.server.Close()
+	for _, fn := range h.closeFns {
+		if err := fn(); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func (h *harness) registerStop(fn func() error) {
+	h.closeFns = append(h.closeFns, fn)
+}
+
+func newHarness(ctx context.Context) (*harness, error) {
+	h := &harness{closeFns: make([]func() error, 0)}
+	logger := slog.New(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelDebug}))
+
+	// Setup Docker
+	var err error
+	if h.dockerPool, err = dockertest.NewPool(""); err != nil {
 		return nil, fmt.Errorf("setup docker pool: %w", err)
 	}
-
-	psqlContainer, err := setupPsqlContainer(h.dockerPool)
-	if err != nil {
-		return nil, fmt.Errorf("setup postgres container: %w", err)
+	if err = h.dockerPool.Client.Ping(); err != nil {
+		return nil, fmt.Errorf("ping docker: %w", err)
 	}
 
-	h.registerStop(psqlContainer.Close)
-
-	logger.Info("Starting PostgreSQL container")
-
-	h.psqlDB, err = connectToPSQL(ctx, psqlContainer, logger)
-	if err != nil {
-		return nil, fmt.Errorf("connect to postgres: %w", err)
-	}
-
-	h.registerStop(func() error {
-		h.psqlDB.Close()
-
-		return nil
-	})
-
-	logger.Info("Connected to PostgreSQL")
-
-	logger.Info("Running migrations")
-
-	dbURL := fmt.Sprintf("postgres://user:password@%s/postgres?sslmode=disable", psqlContainer.GetHostPort("5432/tcp"))
-
-	db, err := sql.Open("postgres", dbURL)
-	if err != nil {
-		return nil, fmt.Errorf("open postgres connection: %w", err)
-	}
-
-	driver, err := dbDriver.WithInstance(db, &dbDriver.Config{})
-	if err != nil {
-		return nil, fmt.Errorf("create migration driver: %w", err)
-	}
-
-	m, err := migrate.NewWithDatabaseInstance("file://../postgres/migrations", "postgres", driver)
-	if err != nil {
-		return nil, fmt.Errorf("create migration instance: %w", err)
-	}
-
-	if err := m.Up(); err != nil && !errors.Is(err, migrate.ErrNoChange) {
-		return nil, fmt.Errorf("run migrations: %w", err)
-	}
-
-	logger.Info("Migrations complete")
-	svc := &service.Service{Repo: postgres.NewRepository(h.psqlDB)}
-	handler := server.NewHandler(logger, svc, "", 1)
-
-	h.server = httptest.NewServer(handler)
-	h.client = client.New(h.server.URL, "")
-
-	return h, nil
-}
-
-func setupDockerPool() (*dockertest.Pool, error) {
-	pool, err := dockertest.NewPool("")
-	if err != nil {
-		return nil, err
-	}
-
-	return pool, pool.Client.Ping()
-}
-
-func setupPsqlContainer(pool *dockertest.Pool) (*dockertest.Resource, error) {
-	return pool.RunWithOptions(&dockertest.RunOptions{
+	// Setup PostgreSQL
+	psqlContainer, err := h.dockerPool.RunWithOptions(&dockertest.RunOptions{
 		Repository: "postgres",
 		Tag:        "17",
 		Env: []string{
@@ -190,27 +173,56 @@ func setupPsqlContainer(pool *dockertest.Pool) (*dockertest.Resource, error) {
 		hc.AutoRemove = true
 		hc.RestartPolicy = docker.RestartPolicy{Name: "no"}
 	})
-}
+	if err != nil {
+		return nil, fmt.Errorf("start postgres: %w", err)
+	}
+	h.registerStop(psqlContainer.Close)
 
-func connectToPSQL(ctx context.Context, resource *dockertest.Resource, logger *slog.Logger) (*pgxpool.Pool, error) {
-	hostAndPort := resource.GetHostPort("5432/tcp")
-	databaseURL := fmt.Sprintf("postgres://user:password@%s/postgres?sslmode=disable", hostAndPort)
+	// Connect to PostgreSQL
+	logger.Info("Starting PostgreSQL container")
+	hostAndPort := psqlContainer.GetHostPort("5432/tcp")
+	dbURL := fmt.Sprintf("postgres://user:password@%s/postgres?sslmode=disable", hostAndPort)
 
-	var err error
-
+	// Retry connection a few times
 	for i := range 3 {
-		time.Sleep(2 * time.Second) // Wait before retrying
-
-		client, err := pgxpool.New(ctx, databaseURL)
-		if err == nil {
-			err = client.Ping(ctx)
-			if err == nil {
-				return client, nil // Connection successful
+		time.Sleep(2 * time.Second)
+		if h.psqlDB, err = pgxpool.New(ctx, dbURL); err == nil {
+			if err = h.psqlDB.Ping(ctx); err == nil {
+				break // Connected successfully
 			}
 		}
-
 		logger.Error("Failed to connect to PostgreSQL", "retry", i, "error", err)
+		if i == 2 {
+			return nil, fmt.Errorf("failed to connect to PostgreSQL: %w", err)
+		}
 	}
+	h.registerStop(func() error { h.psqlDB.Close(); return nil })
+	logger.Info("Connected to PostgreSQL")
 
-	return nil, fmt.Errorf("failed to connect to PostgreSQL after retries: %w", err)
+	// Run migrations
+	logger.Info("Running migrations")
+	db, err := sql.Open("postgres", dbURL)
+	if err != nil {
+		return nil, fmt.Errorf("open postgres connection: %w", err)
+	}
+	driver, err := dbDriver.WithInstance(db, &dbDriver.Config{})
+	if err != nil {
+		return nil, fmt.Errorf("create migration driver: %w", err)
+	}
+	m, err := migrate.NewWithDatabaseInstance("file://../postgres/migrations", "postgres", driver)
+	if err != nil {
+		return nil, fmt.Errorf("create migration instance: %w", err)
+	}
+	if err := m.Up(); err != nil && !errors.Is(err, migrate.ErrNoChange) {
+		return nil, fmt.Errorf("run migrations: %w", err)
+	}
+	logger.Info("Migrations complete")
+
+	// Setup service and server
+	svc := &service.Service{Repo: postgres.NewRepository(h.psqlDB)}
+	handler := server.NewHandler(logger, svc, string(jwtSecret), jwtExpDays)
+	h.server = httptest.NewServer(handler)
+	h.client = client.New(h.server.URL, "")
+
+	return h, nil
 }

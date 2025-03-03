@@ -9,3 +9,8 @@ import (
 func TestMain(m *testing.M) {
 	testclient.MustSetup(m)
 }
+
+// Helper for returning pointer to any type.
+func ptr[T any](v T) *T {
+	return &v
+}

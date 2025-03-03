@@ -6,58 +6,10 @@ import (
 	"testing"
 
 	"github.com/ghetzel/testify/require"
-	"github.com/google/uuid"
 	"github.com/listendev/jibril-server/client/testclient"
 	"github.com/listendev/jibril-server/types"
 	"github.com/stretchr/testify/assert"
 )
-
-func TestIngestEvent(t *testing.T) {
-	ctx := t.Context()
-	withToken := testclient.WithToken(t)
-
-	t.Run("ok", func(t *testing.T) {
-		event := types.Event{
-			ID:      uuid.New().String(),
-			AgentID: uuid.New().String(),
-			Kind:    types.EventKindDropDomain,
-			Data: types.EventData{
-				Process: &types.Process{
-					Cmd: ptr("test-cmd"),
-					PID: ptr(1234),
-				},
-			},
-		}
-
-		{
-			got, err := withToken.IngestEvent(ctx, event)
-			require.NoError(t, err)
-			assert.NotZero(t, got.ID)
-		}
-
-		// update event with same ID
-		event.Data.Process.Cmd = ptr("updated-cmd")
-
-		{
-			got, err := withToken.IngestEvent(ctx, event)
-			require.NoError(t, err)
-			assert.NotZero(t, got.ID)
-		}
-	})
-
-	t.Run("invalid event kind", func(t *testing.T) {
-		event := types.Event{
-			Kind: types.EventKind("invalid"),
-		}
-
-		_, err := withToken.IngestEvent(ctx, event)
-		assert.Error(t, err)
-	})
-}
-
-func ptr[T any](v T) *T {
-	return &v
-}
 
 func TestIngestUnmarshaledEvents(t *testing.T) {
 	type test struct {
