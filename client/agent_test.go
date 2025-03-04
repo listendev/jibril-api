@@ -22,6 +22,13 @@ func WithOS(os string) AgentOption {
 	}
 }
 
+// WithKubernetesContext sets the agent Kubernetes context.
+func WithKubernetesContext(k8sContext *types.AgentKubernetesContext) AgentOption {
+	return func(a *types.CreateAgent) {
+		a.KubernetesContext = k8sContext
+	}
+}
+
 // WithArch sets the agent architecture.
 func WithArch(arch string) AgentOption {
 	return func(a *types.CreateAgent) {

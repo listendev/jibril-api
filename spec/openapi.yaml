@@ -272,6 +272,106 @@ paths:
           description: Unauthorized
         "500":
           description: Internal server error
+    get:
+      security:
+        - BearerAuth: []
+      summary: Query issues returning list of issues
+      operationId: listIssues
+      parameters:
+        - name: filter.class
+          in: query
+          description: Filter issues by class (network_exfiltration, crypto_miner)
+          required: false
+          schema:
+            $ref: "#/components/schemas/IssueClass"
+        
+        - name: filter.state
+          in: query
+          description: Filter issues by state
+          required: false
+          schema:
+            $ref: "#/components/schemas/IssueState"
+        
+        - name: filter.priority
+          in: query
+          description: Filter issues by priority
+          required: false
+          schema:
+            $ref: "#/components/schemas/IssuePriority"
+        
+        - name: filter.agent_kind
+          in: query
+          description: Filter issues by agent kind
+          required: false
+          schema:
+            $ref: "#/components/schemas/AgentKind"
+        
+        - name: label.*
+          in: query
+          description: Labels for querying issues (e.g., label.severity=high)
+          required: false
+          style: form
+          explode: true
+          schema:
+            type: object
+          example:
+            label.severity: high
+            label.type: bug
+        
+        - name: first
+          in: query
+          description: Number of items to return from the start
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+        
+        - name: after
+          in: query
+          description: Cursor for paginating forward
+          required: false
+          schema:
+            type: string
+        
+        - name: last
+          in: query
+          description: Number of items to return from the end
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+        
+        - name: before
+          in: query
+          description: Cursor for paginating backward
+          required: false
+          schema:
+            type: string
+      
+      responses:
+        "200":
+          description: Object with list of issues and pagination
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  items:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/Issue"
+                  pageInfo:
+                    $ref: "#/components/schemas/PageInfo"
+        "400":
+          description: Invalid input
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          description: Unauthorized
+        "500":
+          description: Internal server error
 
   /api/v1/issues/{id}:
     get:
@@ -920,6 +1020,12 @@ components:
         - high
         - critical
     
+    IssueClass:
+      type: string
+      enum:
+        - network_exfiltration
+        - crypto_miner
+    
     IssueLabels:
       type: object
       additionalProperties:
@@ -936,7 +1042,7 @@ components:
           type: string
           format: uuid
         class:
-          type: string
+          $ref: "#/components/schemas/IssueClass"
         description:
           type: string
         state:
@@ -974,7 +1080,7 @@ components:
         - event_ids
       properties:
         class:
-          type: string
+          $ref: "#/components/schemas/IssueClass"
         description:
           type: string
         state:
@@ -993,7 +1099,7 @@ components:
       type: object
       properties:
         class:
-          type: string
+          $ref: "#/components/schemas/IssueClass"
           nullable: true
         description:
           type: string

@@ -19,6 +19,9 @@ const (
 	IssuePriorityMedium   IssuePriority = "medium"
 	IssuePriorityHigh     IssuePriority = "high"
 	IssuePriorityCritical IssuePriority = "critical"
+
+	IssueClassNetworkExfiltration IssueClass = "network_exfiltration"
+	IssueClassCryptoMiner         IssueClass = "crypto_miner"
 )
 
 const (
@@ -30,6 +33,7 @@ const (
 	ErrInvalidIssueIgnoreFor   = errs.InvalidArgumentError("invalid issue ignore_for")
 	ErrInvalidIssueReason      = errs.InvalidArgumentError("invalid issue reason")
 	ErrUnauthorizedEvents      = errs.UnauthorizedError("one or more events do not belong to this project")
+	ErrInvalidAgentKind        = errs.InvalidArgumentError("invalid agent kind")
 )
 
 // IssueState represents the possible states of an issue.
@@ -57,6 +61,21 @@ func (p IssuePriority) String() string {
 func (p IssuePriority) IsValid() bool {
 	switch p {
 	case IssuePriorityLow, IssuePriorityMedium, IssuePriorityHigh, IssuePriorityCritical:
+		return true
+	}
+	return false
+}
+
+// IssueClass represents the possible classes of an issue.
+type IssueClass string
+
+func (c IssueClass) String() string {
+	return string(c)
+}
+
+func (c IssueClass) IsValid() bool {
+	switch c {
+	case IssueClassNetworkExfiltration, IssueClassCryptoMiner:
 		return true
 	}
 	return false
@@ -128,11 +147,109 @@ func DecodeIssueLabels(values url.Values) IssueLabels {
 	return labels
 }
 
+// IssueFilters provides strongly typed filtering options for issues.
+type IssueFilters struct {
+	Class     *IssueClass    `json:"class,omitempty"`
+	State     *IssueState    `json:"state,omitempty"`
+	Priority  *IssuePriority `json:"priority,omitempty"`
+	AgentKind *AgentKind     `json:"agent_kind,omitempty"`
+}
+
+func (f *IssueFilters) Validate() error {
+	if f == nil {
+		return nil
+	}
+
+	// Validate class if provided
+	if f.Class != nil && !f.Class.IsValid() {
+		return ErrInvalidIssueClass
+	}
+
+	// Validate state if provided
+	if f.State != nil && !f.State.IsValid() {
+		return ErrInvalidIssueState
+	}
+
+	// Validate priority if provided
+	if f.Priority != nil && !f.Priority.IsValid() {
+		return ErrInvalidIssuePriority
+	}
+
+	// Validate agent kind if provided
+	if f.AgentKind != nil && !f.AgentKind.IsValid() {
+		return ErrInvalidAgentKind
+	}
+
+	return nil
+}
+
+func (f *IssueFilters) Encode() url.Values {
+	values := url.Values{}
+
+	if f == nil {
+		return values
+	}
+
+	if f.Class != nil {
+		values.Set("filter.class", f.Class.String())
+	}
+
+	if f.State != nil {
+		values.Set("filter.state", f.State.String())
+	}
+
+	if f.Priority != nil {
+		values.Set("filter.priority", f.Priority.String())
+	}
+
+	if f.AgentKind != nil {
+		values.Set("filter.agent_kind", f.AgentKind.String())
+	}
+
+	return values
+}
+
+// DecodeIssueFilters extracts IssueFilters from URL query parameters.
+func DecodeIssueFilters(values url.Values) *IssueFilters {
+	filters := &IssueFilters{}
+
+	if classStr := values.Get("filter.class"); classStr != "" {
+		class := IssueClass(classStr)
+		filters.Class = &class
+	}
+
+	if stateStr := values.Get("filter.state"); stateStr != "" {
+		state := IssueState(stateStr)
+		filters.State = &state
+	}
+
+	if priorityStr := values.Get("filter.priority"); priorityStr != "" {
+		priority := IssuePriority(priorityStr)
+		filters.Priority = &priority
+	}
+
+	if agentKindStr := values.Get("filter.agent_kind"); agentKindStr != "" {
+		agentKind := AgentKind(agentKindStr)
+		filters.AgentKind = &agentKind
+	}
+
+	if filters.IsEmpty() {
+		return nil
+	}
+
+	return filters
+}
+
+// IsEmpty checks if all filters are nil.
+func (f IssueFilters) IsEmpty() bool {
+	return f.Class == nil && f.State == nil && f.Priority == nil && f.AgentKind == nil
+}
+
 // Issue represents the stored issue model.
 type Issue struct {
 	ID          string        `db:"id"          json:"id"`
 	ProjectID   string        `db:"project_id"  json:"-"` // Not exposed in API
-	Class       string        `db:"class"       json:"class"`
+	Class       IssueClass    `db:"class"       json:"class"`
 	Description string        `db:"description" json:"description"`
 	State       IssueState    `db:"state"       json:"state"`
 	Priority    IssuePriority `db:"priority"    json:"priority"`
@@ -146,7 +263,7 @@ type Issue struct {
 
 // CreateIssue represents the request to create a new issue.
 type CreateIssue struct {
-	Class       string        `json:"class"`
+	Class       IssueClass    `json:"class"`
 	Description string        `json:"description"`
 	State       IssueState    `json:"state"`
 	Priority    IssuePriority `json:"priority"`
@@ -165,8 +282,8 @@ func (c *CreateIssue) Validate() error {
 		return ErrInvalidIssuePriority
 	}
 
-	// Check required fields
-	if c.Class == "" {
+	// Check issue class
+	if !c.Class.IsValid() {
 		return ErrInvalidIssueClass
 	}
 
@@ -190,7 +307,7 @@ type IssueCreated struct {
 
 // UpdateIssue represents the request to update an existing issue.
 type UpdateIssue struct {
-	Class       *string        `json:"class,omitempty"`
+	Class       *IssueClass    `json:"class,omitempty"`
 	Description *string        `json:"description,omitempty"`
 	State       *IssueState    `json:"state,omitempty"`
 	Priority    *IssuePriority `json:"priority,omitempty"`
@@ -209,7 +326,7 @@ func (u *UpdateIssue) Validate() error {
 	}
 
 	// Validate class if provided
-	if u.Class != nil && *u.Class == "" {
+	if u.Class != nil && !u.Class.IsValid() {
 		return ErrInvalidIssueClass
 	}
 
@@ -246,4 +363,22 @@ func (u *UpdateIssue) Validate() error {
 type IssueUpdated struct {
 	ID        string    `json:"id"`
 	UpdatedAt time.Time `json:"updated_at"`
+}
+
+// ListIssues represents the request to list issues with filtering and pagination.
+type ListIssues struct {
+	ProjectID string        `json:"-"` // Set internally from context
+	Labels    IssueLabels   `json:"labels,omitempty"`
+	Filters   *IssueFilters `json:"filters,omitempty"`
+	PageArgs  PageArgs      `json:"pageArgs,omitempty"`
+}
+
+// Validate ensures the ListIssues request is valid.
+func (l *ListIssues) Validate() error {
+	if l.Filters != nil {
+		if err := l.Filters.Validate(); err != nil {
+			return err
+		}
+	}
+	return nil
 }

@@ -3,6 +3,8 @@ package client
 import (
 	"context"
 	"net/http"
+	"net/url"
+	"strconv"
 
 	"github.com/listendev/jibril-server/types"
 )
@@ -14,8 +16,8 @@ func (c *Client) CreateIssue(ctx context.Context, issue types.CreateIssue) (type
 	return out, c.do(ctx, &out, http.MethodPost, "/api/v1/issues", issue)
 }
 
-// GetIssue retrieves an issue by ID.
-func (c *Client) GetIssue(ctx context.Context, issueID string) (types.Issue, error) {
+// Issue retrieves an issue by ID.
+func (c *Client) Issue(ctx context.Context, issueID string) (types.Issue, error) {
 	var out types.Issue
 
 	return out, c.do(ctx, &out, http.MethodGet, "/api/v1/issues/"+issueID, nil)
@@ -31,4 +33,55 @@ func (c *Client) UpdateIssue(ctx context.Context, issueID string, issue types.Up
 	var out types.IssueUpdated
 
 	return out, c.do(ctx, &out, http.MethodPatch, "/api/v1/issues/"+issueID, issue)
+}
+
+// Issues retrieves a list of issues based on the provided filters and pagination parameters.
+func (c *Client) Issues(ctx context.Context, params types.ListIssues) (types.Page[types.Issue], error) {
+	var out types.Page[types.Issue]
+
+	// Build query parameters
+	query := url.Values{}
+
+	// Add filter parameters if provided
+	if params.Filters != nil {
+		if params.Filters.Class != nil {
+			query.Set("filter.class", params.Filters.Class.String())
+		}
+		if params.Filters.State != nil {
+			query.Set("filter.state", params.Filters.State.String())
+		}
+		if params.Filters.Priority != nil {
+			query.Set("filter.priority", params.Filters.Priority.String())
+		}
+		if params.Filters.AgentKind != nil {
+			query.Set("filter.agent_kind", params.Filters.AgentKind.String())
+		}
+	}
+
+	// Add label filters
+	for key, value := range params.Labels {
+		query.Set("label."+key, value)
+	}
+
+	// Add pagination parameters
+	if params.PageArgs.First != nil {
+		query.Set("first", strconv.FormatUint(uint64(*params.PageArgs.First), 10))
+	}
+	if params.PageArgs.Last != nil {
+		query.Set("last", strconv.FormatUint(uint64(*params.PageArgs.Last), 10))
+	}
+	if params.PageArgs.After != nil {
+		query.Set("after", string(*params.PageArgs.After))
+	}
+	if params.PageArgs.Before != nil {
+		query.Set("before", string(*params.PageArgs.Before))
+	}
+
+	// Make the request
+	url := "/api/v1/issues"
+	if len(query) > 0 {
+		url += "?" + query.Encode()
+	}
+
+	return out, c.do(ctx, &out, http.MethodGet, url, nil)
 }
