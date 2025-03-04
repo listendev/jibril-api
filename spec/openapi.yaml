@@ -1,7 +1,7 @@
 openapi: 3.0.3
 info:
   title: Jibril API
-  description: API for managing events and other features associated with the Jibril agent.
+  description: API for managing events, issues, and other features associated with the Jibril agent.
   version: 1.0.0
   license:
     name: Proprietary
@@ -50,6 +50,7 @@ paths:
           description: Unauthorized
         "500":
           description: Internal server error
+  
   /api/v1/agents/{id}:
     get:
       security:
@@ -137,6 +138,7 @@ paths:
           description: Unauthorized
         "500":
           description: Internal server error
+  
   /api/v1/agents:
     post:
       security:
@@ -239,6 +241,153 @@ paths:
           description: Unauthorized
         "500":
           description: Internal server error
+  
+  /api/v1/issues:
+    post:
+      security:
+        - BearerAuth: []
+      summary: Create a new issue
+      operationId: createIssue
+      requestBody:
+        description: Issue object that needs to be created
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateIssue"
+      responses:
+        "201":
+          description: Issue created successfully
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/IssueCreated"
+        "400":
+          description: Invalid input
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          description: Unauthorized
+        "500":
+          description: Internal server error
+
+  /api/v1/issues/{id}:
+    get:
+      security:
+        - BearerAuth: []
+      summary: Get issue by ID
+      operationId: getIssueById
+      parameters:
+        - name: id
+          in: path
+          description: ID of issue to return
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: Issue found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Issue"
+        "400":
+          description: Invalid ID format
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: Issue not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          description: Unauthorized
+        "500":
+          description: Internal server error
+    
+    delete:
+      security:
+        - BearerAuth: []
+      summary: Delete issue by ID
+      operationId: deleteIssueById
+      parameters:
+        - name: id
+          in: path
+          description: ID of issue to delete
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "204":
+          description: Issue deleted
+        "400":
+          description: Invalid ID format
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: Issue not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          description: Unauthorized
+        "500":
+          description: Internal server error
+    
+    patch:
+      security:
+        - BearerAuth: []
+      summary: Update issue fields by ID
+      operationId: updateIssueById
+      parameters:
+        - name: id
+          in: path
+          description: ID of issue to update
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        description: Issue fields that need to be updated
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateIssue"
+      responses:
+        "200":
+          description: Issue updated successfully
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/IssueUpdated"
+        "400":
+          description: Invalid input
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: Issue not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          description: Unauthorized
+        "500":
+          description: Internal server error
+  
   /healthz:
     get:
       security: []
@@ -251,12 +400,14 @@ paths:
           description: Service not found
         "500":
           description: Service is unhealthy
+
 components:
   securitySchemes:
     BearerAuth:
       type: http
       scheme: bearer
       bearerFormat: JWT
+
   schemas:
     Error:
       type: object
@@ -266,11 +417,13 @@ components:
         error:
           type: string
           example: "invalid event kind"
+    
     IngestedEvent:
       type: object
       properties:
         id:
           type: string
+    
     Event:
       type: object
       required:
@@ -291,6 +444,7 @@ components:
         updatedAt:
           type: string
           format: date-time
+
     DroppedIP:
       type: object
       properties:
@@ -313,6 +467,7 @@ components:
           $ref: "#/components/schemas/Node"
         properties:
           $ref: "#/components/schemas/Properties"
+    
     GitHubContext:
       type: object
       required:
@@ -377,6 +532,7 @@ components:
           type: string
         update_at:
           type: string
+    
     Data:
       type: object
       properties:
@@ -407,6 +563,7 @@ components:
         note:
           type: string
           nullable: true
+    
     FullInfo:
       type: object
       properties:
@@ -422,6 +579,7 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/Process"
+    
     FlowSimple:
       type: object
       properties:
@@ -439,6 +597,7 @@ components:
           $ref: "#/components/schemas/Node"
         settings:
           $ref: "#/components/schemas/Settings"
+    
     Flow:
       type: object
       properties:
@@ -458,6 +617,7 @@ components:
           $ref: "#/components/schemas/Properties"
         settings:
           $ref: "#/components/schemas/Settings"
+    
     Settings:
       type: object
       properties:
@@ -469,6 +629,7 @@ components:
           type: string
         ended_by:
           type: string
+    
     Properties:
       type: object
       properties:
@@ -490,6 +651,7 @@ components:
           type: boolean
         terminated:
           type: boolean
+    
     ICMP:
       type: object
       properties:
@@ -497,6 +659,7 @@ components:
           type: string
         type:
           type: string
+    
     Node:
       type: object
       properties:
@@ -510,6 +673,7 @@ components:
             type: string
         port:
           type: integer
+    
     Process:
       type: object
       properties:
@@ -541,6 +705,7 @@ components:
           type: string
         prev_loader:
           type: string
+    
     EventHead:
       type: object
       properties:
@@ -562,15 +727,18 @@ components:
           type: string
         importance:
           type: string
+    
     AgentKind:
       type: string
       enum:
         - github
         - kubernetes
+    
     AgentLabels:
       type: object
       additionalProperties:
         type: string
+    
     AgentKubernetesContext:
       type: object
       required:
@@ -581,6 +749,7 @@ components:
           type: string
         namespace:
           type: string
+    
     Agent:
       type: object
       properties:
@@ -616,6 +785,7 @@ components:
         updated_at:
           type: string
           format: date-time
+    
     CreateAgent:
       type: object
       required:
@@ -648,6 +818,7 @@ components:
           $ref: "#/components/schemas/GitHubContext"
         kubernetes_context:
           $ref: "#/components/schemas/AgentKubernetesContext"
+    
     UpdateAgent:
       type: object
       properties:
@@ -670,6 +841,7 @@ components:
         machine_id:
           type: string
           nullable: true
+    
     AgentCreated:
       type: object
       required:
@@ -680,6 +852,7 @@ components:
           type: string
         agent_id:
           type: string
+    
     Page:
       type: object
       properties:
@@ -690,6 +863,7 @@ components:
             description: Generic item
         pageInfo:
           $ref: '#/components/schemas/PageInfo'
+    
     PageInfo:
       type: object
       properties:
@@ -703,6 +877,7 @@ components:
         startCursor:
           type: string
           nullable: true
+    
     AgentFilters:
       type: object
       properties:
@@ -728,3 +903,142 @@ components:
         kind:
           $ref: "#/components/schemas/AgentKind"
           description: Kind of agent
+    
+    # Issue-related schemas
+    IssueState:
+      type: string
+      enum:
+        - triaged
+        - ignored
+        - blocked
+    
+    IssuePriority:
+      type: string
+      enum:
+        - low
+        - medium
+        - high
+        - critical
+    
+    IssueLabels:
+      type: object
+      additionalProperties:
+        type: string
+      example:
+        severity: high
+        type: bug
+        area: security
+    
+    Issue:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        class:
+          type: string
+        description:
+          type: string
+        state:
+          $ref: "#/components/schemas/IssueState"
+        priority:
+          $ref: "#/components/schemas/IssuePriority"
+        labels:
+          $ref: "#/components/schemas/IssueLabels"
+        ignore_for:
+          type: string
+          nullable: true
+        events:
+          type: array
+          description: Events associated with this issue
+          items:
+            $ref: "#/components/schemas/Event"
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+        deleted_at:
+          type: string
+          format: date-time
+          nullable: true
+    
+    CreateIssue:
+      type: object
+      required:
+        - class
+        - description
+        - state
+        - priority
+        - event_ids
+      properties:
+        class:
+          type: string
+        description:
+          type: string
+        state:
+          $ref: "#/components/schemas/IssueState"
+        priority:
+          $ref: "#/components/schemas/IssuePriority"
+        labels:
+          $ref: "#/components/schemas/IssueLabels"
+        event_ids:
+          type: array
+          items:
+            type: string
+            format: uuid
+    
+    UpdateIssue:
+      type: object
+      properties:
+        class:
+          type: string
+          nullable: true
+        description:
+          type: string
+          nullable: true
+        state:
+          $ref: "#/components/schemas/IssueState"
+          nullable: true
+        priority:
+          $ref: "#/components/schemas/IssuePriority"
+          nullable: true
+        labels:
+          $ref: "#/components/schemas/IssueLabels"
+          nullable: true
+        ignore_for:
+          type: string
+          nullable: true
+        reason:
+          type: string
+          description: Reason for state change
+          nullable: true
+        event_ids:
+          type: array
+          items:
+            type: string
+            format: uuid
+    
+    IssueCreated:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+    
+    IssueUpdated:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        updated_at:
+          type: string
+          format: date-time

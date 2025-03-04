@@ -7,6 +7,9 @@ type InvalidArgumentError string
 
 func (e InvalidArgumentError) Error() string { return string(e) }
 func (e InvalidArgumentError) Is(target error) bool {
+	if target == ErrInvalidArgument {
+		return true // All InvalidArgumentError types should match ErrInvalidArgument
+	}
 	if target, ok := target.(InvalidArgumentError); ok {
 		return e == target
 	}
