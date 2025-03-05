@@ -219,7 +219,10 @@ func newHarness(ctx context.Context) (*harness, error) {
 	logger.Info("Migrations complete")
 
 	// Setup service and server
-	svc := &service.Service{Repo: postgres.NewRepository(h.psqlDB)}
+	svc := &service.Service{
+		Repo:   postgres.NewRepository(h.psqlDB),
+		Logger: logger,
+	}
 	handler := server.NewHandler(logger, svc, string(jwtSecret), jwtExpDays)
 	h.server = httptest.NewServer(handler)
 	h.client = client.New(h.server.URL, "")
