@@ -34,6 +34,9 @@ type UnauthorizedError string
 
 func (e UnauthorizedError) Error() string { return string(e) }
 func (e UnauthorizedError) Is(target error) bool {
+	if target == ErrUnauthorized {
+		return true // All UnauthorizedError types should match ErrUnauthorized
+	}
 	if target, ok := target.(UnauthorizedError); ok {
 		return e == target
 	}

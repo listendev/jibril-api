@@ -32,7 +32,8 @@ const (
 	ErrInvalidIssueEventIDs    = errs.InvalidArgumentError("invalid issue event IDs")
 	ErrInvalidIssueIgnoreFor   = errs.InvalidArgumentError("invalid issue ignore_for")
 	ErrInvalidIssueReason      = errs.InvalidArgumentError("invalid issue reason")
-	ErrUnauthorizedEvents      = errs.UnauthorizedError("one or more events do not belong to this project")
+	ErrUnauthorizedEvents      = errs.UnauthorizedError("permission denied")
+	ErrUnauthorizedIssue       = errs.UnauthorizedError("permission denied")
 	ErrInvalidAgentKind        = errs.InvalidArgumentError("invalid agent kind")
 )
 

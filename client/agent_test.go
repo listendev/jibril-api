@@ -220,9 +220,19 @@ func TestAgentGet(t *testing.T) {
 		require.Error(t, err)
 	})
 
-	t.Run("not found", func(t *testing.T) {
+	t.Run("not found or unauthorized", func(t *testing.T) {
 		_, err := client.Agent(ctx, uuid.NewString())
 		require.Error(t, err)
+		// Since we now check authorization before existence, random UUIDs will return "permission denied"
+		require.Contains(t, err.Error(), "permission denied")
+	})
+
+	t.Run("unauthorized", func(t *testing.T) {
+		// Using a random ID that should trigger unauthorized error
+		randomID := uuid.NewString()
+		_, err := client.Agent(ctx, randomID)
+		require.Error(t, err)
+		require.Contains(t, err.Error(), "permission denied")
 	})
 
 	t.Run("valid agent", func(t *testing.T) {
@@ -246,6 +256,16 @@ func TestAgentUpdate(t *testing.T) {
 	t.Run("no fields", func(t *testing.T) {
 		err := client.UpdateAgent(ctx, agentID, types.UpdateAgent{})
 		require.Error(t, err)
+	})
+
+	t.Run("unauthorized", func(t *testing.T) {
+		// Using a random ID that should trigger unauthorized error
+		randomID := uuid.NewString()
+		err := client.UpdateAgent(ctx, randomID, types.UpdateAgent{
+			MachineID: ptr("should-not-update"),
+		})
+		require.Error(t, err)
+		require.Contains(t, err.Error(), "permission denied")
 	})
 
 	t.Run("update machine id", func(t *testing.T) {
@@ -272,9 +292,19 @@ func TestAgentDelete(t *testing.T) {
 		require.Error(t, err)
 	})
 
-	t.Run("not found", func(t *testing.T) {
+	t.Run("not found or unauthorized", func(t *testing.T) {
 		err := client.DeleteAgent(ctx, uuid.NewString())
 		require.Error(t, err)
+		// Since we now check authorization before existence, random UUIDs will return "permission denied"
+		require.Contains(t, err.Error(), "permission denied")
+	})
+
+	t.Run("unauthorized", func(t *testing.T) {
+		// Using a random ID that should trigger unauthorized error
+		randomID := uuid.NewString()
+		err := client.DeleteAgent(ctx, randomID)
+		require.Error(t, err)
+		require.Contains(t, err.Error(), "permission denied")
 	})
 
 	t.Run("success", func(t *testing.T) {

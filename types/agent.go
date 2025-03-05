@@ -16,6 +16,8 @@ type AgentKind string
 const (
 	AgentKindGithub     AgentKind = "github"
 	AgentKindKubernetes AgentKind = "kubernetes"
+
+	ErrUnauthorizedAgent = errs.UnauthorizedError("permission denied")
 )
 
 func (k AgentKind) String() string {

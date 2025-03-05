@@ -266,10 +266,19 @@ func TestIssue(t *testing.T) {
 		assert.Contains(t, err.Error(), "invalid issue ID")
 	})
 
-	t.Run("not found", func(t *testing.T) {
+	t.Run("not found or unauthorized", func(t *testing.T) {
 		_, err := client.Issue(ctx, uuid.New().String())
 		require.Error(t, err)
-		assert.Contains(t, err.Error(), "not found")
+		// Since we now check authorization before existence, random UUIDs will return "permission denied"
+		require.Contains(t, err.Error(), "permission denied")
+	})
+
+	t.Run("unauthorized", func(t *testing.T) {
+		// Using a random ID that should trigger unauthorized error
+		randomID := uuid.New().String()
+		_, err := client.Issue(ctx, randomID)
+		require.Error(t, err)
+		require.Contains(t, err.Error(), "permission denied")
 	})
 
 	t.Run("ok", func(t *testing.T) {
@@ -333,6 +342,16 @@ func TestUpdateIssue(t *testing.T) {
 		})
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "invalid issue ID")
+	})
+
+	t.Run("unauthorized", func(t *testing.T) {
+		// Using a random ID that should trigger unauthorized error
+		randomID := uuid.New().String()
+		_, err := client.UpdateIssue(ctx, randomID, types.UpdateIssue{
+			Description: ptr("Should not update"),
+		})
+		require.Error(t, err)
+		require.Contains(t, err.Error(), "permission denied")
 	})
 
 	t.Run("no changes", func(t *testing.T) {
@@ -559,20 +578,36 @@ func TestDeleteIssue(t *testing.T) {
 		assert.Contains(t, err.Error(), "invalid issue ID")
 	})
 
-	t.Run("not found", func(t *testing.T) {
+	t.Run("not found or unauthorized", func(t *testing.T) {
 		err := client.DeleteIssue(ctx, uuid.New().String())
 		require.Error(t, err)
-		assert.Contains(t, err.Error(), "not found")
+		// Since we now check authorization before existence, random UUIDs will return "permission denied"
+		require.Contains(t, err.Error(), "permission denied")
+	})
+
+	t.Run("unauthorized", func(t *testing.T) {
+		// Using a random ID that should trigger unauthorized error
+		randomID := uuid.New().String()
+		err := client.DeleteIssue(ctx, randomID)
+		require.Error(t, err)
+		require.Contains(t, err.Error(), "permission denied")
 	})
 
 	t.Run("ok", func(t *testing.T) {
-		err := client.DeleteIssue(ctx, issueID)
+		// We need to verify the issue exists before trying to delete it
+		_, err := client.Issue(ctx, issueID)
+		require.NoError(t, err, "Issue should exist before deletion")
+
+		// Now try to delete it
+		err = client.DeleteIssue(ctx, issueID)
 		require.NoError(t, err)
 
 		// Verify issue is no longer accessible
 		_, err = client.Issue(ctx, issueID)
 		require.Error(t, err)
-		assert.Contains(t, err.Error(), "not found")
+		// Since we now check authorization before existence, we'll get "permission denied" instead of "not found"
+		// This occurs because the issue doesn't exist anymore so it can't be associated with the user's project
+		assert.Contains(t, err.Error(), "permission denied")
 	})
 }
 
