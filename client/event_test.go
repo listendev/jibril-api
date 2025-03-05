@@ -18,12 +18,18 @@ import (
 
 func TestIngestEvent(t *testing.T) {
 	ctx := t.Context()
-	withToken := testclient.WithToken(t)
+	client := testclient.WithToken(t)
+
+	// First create an agent to get a token
+	agentCreated, _ := setupAgent(ctx, t, client)
+
+	// Create a client with the agent token
+	agentClient := client.WithAgentToken(agentCreated.AgentToken)
 
 	t.Run("ok", func(t *testing.T) {
 		event := types.Event{
 			ID:      uuid.New().String(),
-			AgentID: uuid.New().String(),
+			AgentID: agentCreated.ID, // Use the created agent ID
 			Kind:    types.EventKindDropDomain,
 			Data: types.EventData{
 				Process: &types.Process{
@@ -34,7 +40,7 @@ func TestIngestEvent(t *testing.T) {
 		}
 
 		{
-			got, err := withToken.IngestEvent(ctx, event)
+			got, err := agentClient.IngestEvent(ctx, event)
 			require.NoError(t, err)
 			assert.NotZero(t, got.ID)
 		}
@@ -43,7 +49,7 @@ func TestIngestEvent(t *testing.T) {
 		event.Data.Process.Cmd = ptr("updated-cmd")
 
 		{
-			got, err := withToken.IngestEvent(ctx, event)
+			got, err := agentClient.IngestEvent(ctx, event)
 			require.NoError(t, err)
 			assert.NotZero(t, got.ID)
 		}
@@ -52,22 +58,95 @@ func TestIngestEvent(t *testing.T) {
 	t.Run("invalid event kind", func(t *testing.T) {
 		event := types.Event{
 			ID:      uuid.New().String(),
-			AgentID: uuid.New().String(),
+			AgentID: agentCreated.ID,
 			Kind:    types.EventKind("invalid"),
 		}
 
-		_, err := withToken.IngestEvent(ctx, event)
+		_, err := agentClient.IngestEvent(ctx, event)
 		assert.Error(t, err)
+	})
+
+	t.Run("mismatched agent id is denied", func(t *testing.T) {
+		// Create a second agent
+		secondAgentCreated, _ := setupAgent(ctx, t, client)
+
+		// Use the token from the first agent but try to submit an event with the second agent's ID
+		event := types.Event{
+			ID:      uuid.New().String(),
+			AgentID: secondAgentCreated.ID, // Use the second agent's ID
+			Kind:    types.EventKindDropDomain,
+			Data: types.EventData{
+				Process: &types.Process{
+					Cmd: ptr("test-cmd"),
+					PID: ptr(1234),
+				},
+			},
+		}
+
+		// Use the first agent's token for authorization
+		_, err := agentClient.IngestEvent(ctx, event)
+
+		// Verify the API correctly returns an unauthorized error
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "unauthorized")
+	})
+
+	t.Run("missing agent id uses token agent id", func(t *testing.T) {
+		// Submit an event with no agent ID specified
+		event := types.Event{
+			ID:   uuid.New().String(),
+			Kind: types.EventKindFlow, // Using Flow since it triggers issue creation
+			Data: types.EventData{
+				Head: &types.EventHead{
+					Name:        string(types.EventKindFlow),
+					Description: "Flow event for agent ID test",
+					Importance:  "critical",
+				},
+			},
+		}
+
+		// Verify the event is accepted
+		got, err := agentClient.IngestEvent(ctx, event)
+		require.NoError(t, err)
+		assert.NotZero(t, got.ID)
+
+		// Wait for issue creation and verify the event was stored with the correct agent ID
+		// Check that an issue was created
+		issues, err := client.Issues(ctx, types.ListIssues{})
+		require.NoError(t, err)
+		require.NotEmpty(t, issues.Items, "No issues created for flow event")
+
+		// Find our issue
+		var foundIssue bool
+		for _, issue := range issues.Items {
+			// Look for our event in the issue's events
+			for _, e := range issue.Events {
+				if e.ID == event.ID {
+					// Verify the event was stored with the agent ID from the token
+					assert.Equal(t, agentCreated.ID, e.AgentID, "Event should have agent ID from token")
+					foundIssue = true
+					break
+				}
+			}
+			if foundIssue {
+				break
+			}
+		}
+
+		require.True(t, foundIssue, "Could not find our event in any issue")
 	})
 }
 
 // setupEventWithKind creates a test event with the specified kind and returns its ID.
-func setupEventWithKind(ctx context.Context, t *testing.T, client *client.Client, agentID string, kind types.EventKind) string {
+func setupEventWithKind(ctx context.Context, t *testing.T, client *client.Client, agentCreated types.AgentCreated, kind types.EventKind) string {
 	t.Helper()
+
+	// Create a client with the agent token
+	agentClient := client.WithAgentToken(agentCreated.AgentToken)
 
 	event := types.Event{
 		ID:      uuid.New().String(),
-		AgentID: agentID,
+		AgentID: agentCreated.ID,
 		Kind:    kind,
 		Data: types.EventData{
 			Head: &types.EventHead{
@@ -78,7 +157,7 @@ func setupEventWithKind(ctx context.Context, t *testing.T, client *client.Client
 		},
 	}
 
-	got, err := client.IngestEvent(ctx, event)
+	got, err := agentClient.IngestEvent(ctx, event)
 	require.NoError(t, err, "Failed to ingest event")
 	require.NotZero(t, got.ID, "Expected event ID to be returned")
 
@@ -105,10 +184,10 @@ func TestEventProcessorIssueCreation(t *testing.T) {
 				client := testclient.WithToken(t)
 
 				// First create a valid agent for this project
-				agentID, _ := setupAgent(ctx, t, client)
+				agentCreated, _ := setupAgent(ctx, t, client)
 
 				// Setup event with the specified kind
-				eventID := setupEventWithKind(ctx, t, client, agentID, eventKind)
+				eventID := setupEventWithKind(ctx, t, client, agentCreated, eventKind)
 
 				// Check that an issue was created
 				issues, err := client.Issues(ctx, types.ListIssues{})
@@ -151,10 +230,10 @@ func TestEventProcessorIssueCreation(t *testing.T) {
 				client := testclient.WithToken(t)
 
 				// First create a valid agent for this project
-				agentID, _ := setupAgent(ctx, t, client)
+				agentCreated, _ := setupAgent(ctx, t, client)
 
 				// Setup event with the specified kind
-				setupEventWithKind(ctx, t, client, agentID, eventKind)
+				setupEventWithKind(ctx, t, client, agentCreated, eventKind)
 
 				// Verify no issues were created
 				issues, err := client.Issues(ctx, types.ListIssues{})
@@ -185,19 +264,27 @@ func TestIngestUnmarshaledEvents(t *testing.T) {
 		{name: "crypto_miner_files", file: "./testdata/crypto_miner_files.json"},
 	}
 
+	ctx := t.Context()
+	client := testclient.WithToken(t)
+
+	// Create an agent to get a token
+	agentCreated, _ := setupAgent(ctx, t, client)
+
+	// Create a client with the agent token
+	agentClient := client.WithAgentToken(agentCreated.AgentToken)
+
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			data, err := os.ReadFile(tt.file)
 			require.NoError(t, err)
 
-			ctx := t.Context()
-			withToken := testclient.WithToken(t)
-
 			var event types.Event
-
 			require.NoError(t, json.Unmarshal(data, &event))
 
-			got, err := withToken.IngestEvent(ctx, event)
+			// Set the agent ID to match our authenticated agent
+			event.AgentID = agentCreated.ID
+
+			got, err := agentClient.IngestEvent(ctx, event)
 			require.NoError(t, err)
 			assert.NotZero(t, got.ID)
 		})

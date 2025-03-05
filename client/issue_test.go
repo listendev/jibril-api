@@ -71,13 +71,16 @@ func WithEventIDs(eventIDs []string) IssueOption {
 	}
 }
 
-// setupEvent creates a test event and returns its ID.
-func setupEvent(ctx context.Context, t *testing.T, client *client.Client, agentID string) string {
+// setupEvent creates a test event using an agent token and returns its ID.
+func setupEvent(ctx context.Context, t *testing.T, client *client.Client, agentCreated types.AgentCreated) string {
 	t.Helper()
+
+	// Create a new client with the agent token
+	agentClient := client.WithAgentToken(agentCreated.AgentToken)
 
 	event := types.Event{
 		ID:      uuid.New().String(),
-		AgentID: agentID,
+		AgentID: agentCreated.ID, // This will be validated/enforced by the server
 		Kind:    types.EventKindFlow,
 		Data: types.EventData{
 			Process: &types.Process{
@@ -88,7 +91,7 @@ func setupEvent(ctx context.Context, t *testing.T, client *client.Client, agentI
 		},
 	}
 
-	got, err := client.IngestEvent(ctx, event)
+	got, err := agentClient.IngestEvent(ctx, event)
 	require.NoError(t, err, "Failed to ingest event")
 	require.NotZero(t, got.ID, "Expected event ID to be returned")
 
@@ -130,10 +133,10 @@ func TestCreateIssue(t *testing.T) {
 	client := testclient.WithToken(t)
 
 	// Create an agent to use for testing
-	agentID, _ := setupAgent(ctx, t, client)
+	agentCreated, _ := setupAgent(ctx, t, client)
 
 	// Create an event to associate with issues
-	eventID := setupEvent(ctx, t, client, agentID)
+	eventID := setupEvent(ctx, t, client, agentCreated)
 
 	t.Run("empty payload", func(t *testing.T) {
 		_, err := client.CreateIssue(ctx, types.CreateIssue{})
@@ -256,8 +259,8 @@ func TestIssue(t *testing.T) {
 	ctx := t.Context()
 	client := testclient.WithToken(t)
 
-	agentID, _ := setupAgent(ctx, t, client)
-	eventID := setupEvent(ctx, t, client, agentID)
+	agentCreated, _ := setupAgent(ctx, t, client)
+	eventID := setupEvent(ctx, t, client, agentCreated)
 	issueID := setupIssue(ctx, t, client, eventID)
 
 	t.Run("invalid UUID", func(t *testing.T) {
@@ -298,7 +301,7 @@ func TestIssue(t *testing.T) {
 		assert.NotNil(t, issue.Events, "Events should not be nil")
 		assert.Len(t, issue.Events, 1, "Should have 1 event associated with the issue")
 		assert.Equal(t, eventID, issue.Events[0].ID, "Event ID should match the one used to create the issue")
-		assert.Equal(t, agentID, issue.Events[0].AgentID, "Event agent ID should match")
+		assert.Equal(t, agentCreated.ID, issue.Events[0].AgentID, "Event agent ID should match")
 
 		// Check event data if needed
 		assert.NotNil(t, issue.Events[0].Data.Process, "Event process data should not be nil")
@@ -309,7 +312,7 @@ func TestIssue(t *testing.T) {
 
 	t.Run("multiple events", func(t *testing.T) {
 		// Create a second event
-		secondEventID := setupEvent(ctx, t, client, agentID)
+		secondEventID := setupEvent(ctx, t, client, agentCreated)
 
 		// Create an issue with multiple events
 		multiEventIssueID := setupIssue(ctx, t, client, eventID,
@@ -332,8 +335,8 @@ func TestUpdateIssue(t *testing.T) {
 	ctx := t.Context()
 	client := testclient.WithToken(t)
 
-	agentID, _ := setupAgent(ctx, t, client)
-	eventID := setupEvent(ctx, t, client, agentID)
+	agentCreated, _ := setupAgent(ctx, t, client)
+	eventID := setupEvent(ctx, t, client, agentCreated)
 	issueID := setupIssue(ctx, t, client, eventID)
 
 	t.Run("invalid UUID", func(t *testing.T) {
@@ -522,7 +525,7 @@ func TestUpdateIssue(t *testing.T) {
 
 	t.Run("add multiple events including valid and duplicate", func(t *testing.T) {
 		// Create a new event
-		newEventID := setupEvent(ctx, t, client, agentID)
+		newEventID := setupEvent(ctx, t, client, agentCreated)
 
 		// Try to update with a mix of new and existing event IDs
 		updated, err := client.UpdateIssue(ctx, issueID, types.UpdateIssue{
@@ -544,7 +547,7 @@ func TestUpdateIssue(t *testing.T) {
 
 	t.Run("mix of valid and invalid event IDs", func(t *testing.T) {
 		// Create a new valid event
-		validEventID := setupEvent(ctx, t, client, agentID)
+		validEventID := setupEvent(ctx, t, client, agentCreated)
 
 		// Create a random invalid event ID
 		invalidEventID := uuid.New().String()
@@ -568,8 +571,8 @@ func TestDeleteIssue(t *testing.T) {
 	ctx := t.Context()
 	client := testclient.WithToken(t)
 
-	agentID, _ := setupAgent(ctx, t, client)
-	eventID := setupEvent(ctx, t, client, agentID)
+	agentCreated, _ := setupAgent(ctx, t, client)
+	eventID := setupEvent(ctx, t, client, agentCreated)
 	issueID := setupIssue(ctx, t, client, eventID)
 
 	t.Run("invalid UUID", func(t *testing.T) {
@@ -617,8 +620,8 @@ func TestIssues(t *testing.T) {
 	client := testclient.WithToken(t)
 
 	// Setup GitHub agent
-	githubAgentID, _ := setupAgent(ctx, t, client, WithAgentKind(types.AgentKindGithub))
-	githubEventID := setupEvent(ctx, t, client, githubAgentID)
+	githubAgent, _ := setupAgent(ctx, t, client, WithAgentKind(types.AgentKindGithub))
+	githubEventID := setupEvent(ctx, t, client, githubAgent)
 
 	// Create multiple issues with different attributes for testing
 	setupTestIssues := func(t *testing.T) []string {

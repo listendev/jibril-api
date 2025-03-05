@@ -18,6 +18,7 @@ type Client struct {
 	BaseClient  *http.Client
 	BaseURL     string
 	JWT         string
+	AgentToken  string
 	Debug       bool
 	formEncoder *form.Encoder
 }
@@ -37,6 +38,7 @@ func (c *Client) Clone() *Client {
 		BaseClient:  c.BaseClient,
 		BaseURL:     c.BaseURL,
 		JWT:         c.JWT,
+		AgentToken:  c.AgentToken,
 		Debug:       c.Debug,
 		formEncoder: form.NewEncoder(),
 	}
@@ -44,8 +46,19 @@ func (c *Client) Clone() *Client {
 
 // SetToken sets the JWT token for authentication.
 func (c *Client) SetToken(token string) {
-	// @TODO: federico to fill with test client logit for JWT
 	c.JWT = token
+}
+
+// SetAgentToken sets the agent token for authentication.
+func (c *Client) SetAgentToken(token string) {
+	c.AgentToken = token
+}
+
+// WithAgentToken creates a new client with the specified agent token.
+func (c *Client) WithAgentToken(token string) *Client {
+	client := c.Clone()
+	client.SetAgentToken(token)
+	return client
 }
 
 func (c *Client) do(ctx context.Context, out any, method, path string, body any) error {
@@ -67,6 +80,10 @@ func (c *Client) do(ctx context.Context, out any, method, path string, body any)
 
 	if c.JWT != "" {
 		req.Header.Set("Authorization", "Bearer "+c.JWT)
+	}
+
+	if c.AgentToken != "" {
+		req.Header.Set("X-Agent-Token", c.AgentToken)
 	}
 
 	if c.Debug {

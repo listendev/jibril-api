@@ -85,8 +85,8 @@ func WithAgentKind(kind types.AgentKind) AgentOption {
 	}
 }
 
-// setupAgent creates a new agent with the given options and returns its ID and GitHub context.
-func setupAgent(ctx context.Context, t *testing.T, client *client.Client, opts ...AgentOption) (string, *types.GitHubContext) {
+// setupAgent creates a new agent with the given options and returns the agent created response and GitHub context.
+func setupAgent(ctx context.Context, t *testing.T, client *client.Client, opts ...AgentOption) (types.AgentCreated, *types.GitHubContext) {
 	t.Helper()
 
 	// Create default GitHub context
@@ -141,7 +141,7 @@ func setupAgent(ctx context.Context, t *testing.T, client *client.Client, opts .
 	require.NoError(t, err, "Failed to create agent")
 	require.NotEmpty(t, agentCreated.ID, "Expected agent ID to be returned")
 
-	return agentCreated.ID, githubContext
+	return agentCreated, githubContext
 }
 
 func TestAgentCreate(t *testing.T) {
@@ -172,10 +172,10 @@ func TestAgentCreate(t *testing.T) {
 
 	t.Run("basic agent", func(t *testing.T) {
 		// Create a basic agent using our setup helper
-		agentID, githubContext := setupAgent(ctx, t, client)
+		agentCreated, githubContext := setupAgent(ctx, t, client)
 
 		// Verify the agent was created successfully
-		agent, err := client.Agent(ctx, agentID)
+		agent, err := client.Agent(ctx, agentCreated.ID)
 		require.NoError(t, err)
 		require.Equal(t, "linux", agent.OS)                            // Default OS
 		require.Equal(t, "amd64", agent.Arch)                          // Default arch
@@ -183,7 +183,7 @@ func TestAgentCreate(t *testing.T) {
 	})
 
 	t.Run("with custom options", func(t *testing.T) {
-		agentID, _ := setupAgent(ctx, t, client,
+		agentCreated, _ := setupAgent(ctx, t, client,
 			WithOS("windows"),
 			WithArch("arm64"),
 			WithIP("192.168.1.100"),
@@ -192,7 +192,7 @@ func TestAgentCreate(t *testing.T) {
 			WithVersion("2.0.0"),
 		)
 
-		agent, err := client.Agent(ctx, agentID)
+		agent, err := client.Agent(ctx, agentCreated.ID)
 		require.NoError(t, err)
 		require.Equal(t, "windows", agent.OS)
 		require.Equal(t, "arm64", agent.Arch)
@@ -209,7 +209,7 @@ func TestAgentGet(t *testing.T) {
 	client := testclient.WithToken(t)
 
 	// Create an agent with custom settings
-	agentID, _ := setupAgent(ctx, t, client,
+	agentCreated, _ := setupAgent(ctx, t, client,
 		WithOS("debian"),
 		WithArch("amd64"),
 		WithLabels(types.AgentLabels{"service": "api"}),
@@ -236,9 +236,9 @@ func TestAgentGet(t *testing.T) {
 	})
 
 	t.Run("valid agent", func(t *testing.T) {
-		agent, err := client.Agent(ctx, agentID)
+		agent, err := client.Agent(ctx, agentCreated.ID)
 		require.NoError(t, err)
-		require.Equal(t, agentID, agent.ID)
+		require.Equal(t, agentCreated.ID, agent.ID)
 		require.Equal(t, "debian", agent.OS)
 		require.Equal(t, "amd64", agent.Arch)
 		require.Equal(t, "api", agent.Labels["service"])
@@ -249,12 +249,12 @@ func TestAgentUpdate(t *testing.T) {
 	ctx := t.Context()
 	client := testclient.WithToken(t)
 
-	agentID, _ := setupAgent(ctx, t, client,
+	agentCreated, _ := setupAgent(ctx, t, client,
 		WithLabels(types.AgentLabels{"original": "value"}),
 	)
 
 	t.Run("no fields", func(t *testing.T) {
-		err := client.UpdateAgent(ctx, agentID, types.UpdateAgent{})
+		err := client.UpdateAgent(ctx, agentCreated.ID, types.UpdateAgent{})
 		require.Error(t, err)
 	})
 
@@ -269,13 +269,13 @@ func TestAgentUpdate(t *testing.T) {
 	})
 
 	t.Run("update machine id", func(t *testing.T) {
-		err := client.UpdateAgent(ctx, agentID, types.UpdateAgent{
+		err := client.UpdateAgent(ctx, agentCreated.ID, types.UpdateAgent{
 			MachineID: ptr("updated-machine-id"),
 		})
 		require.NoError(t, err)
 
 		// Verify update was applied
-		agent, err := client.Agent(ctx, agentID)
+		agent, err := client.Agent(ctx, agentCreated.ID)
 		require.NoError(t, err)
 		require.Equal(t, "updated-machine-id", agent.MachineID)
 	})
@@ -285,7 +285,7 @@ func TestAgentDelete(t *testing.T) {
 	ctx := t.Context()
 	client := testclient.WithToken(t)
 
-	agentID, _ := setupAgent(ctx, t, client)
+	agentCreated, _ := setupAgent(ctx, t, client)
 
 	t.Run("invalid uuid", func(t *testing.T) {
 		err := client.DeleteAgent(ctx, "1234")
@@ -309,11 +309,11 @@ func TestAgentDelete(t *testing.T) {
 
 	t.Run("success", func(t *testing.T) {
 		// Delete the agent - this should NOT return an error
-		err := client.DeleteAgent(ctx, agentID)
+		err := client.DeleteAgent(ctx, agentCreated.ID)
 		require.NoError(t, err, "Expected successful deletion")
 
 		// Verify agent was deleted by trying to get it
-		_, err = client.Agent(ctx, agentID)
+		_, err = client.Agent(ctx, agentCreated.ID)
 		require.Error(t, err, "Expected error when retrieving deleted agent")
 	})
 }
