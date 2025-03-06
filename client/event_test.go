@@ -212,6 +212,14 @@ func TestEventProcessorIssueCreation(t *testing.T) {
 				assert.Equal(t, types.IssuePriorityCritical, issue.Priority, "Issue for %s has incorrect priority", eventKind)
 				assert.Contains(t, issue.Labels, "event_kind")
 				assert.Equal(t, string(eventKind), issue.Labels["event_kind"])
+
+				// Verify the issue state based on the event kind
+				expectedState := types.IssueStateTriaged
+				if eventKind == types.EventKindDropIP || eventKind == types.EventKindDropDomain {
+					expectedState = types.IssueStateBlocked
+				}
+				assert.Equal(t, expectedState, issue.State,
+					"Issue for %s should have state '%s'", eventKind, expectedState)
 			})
 		}
 	})
