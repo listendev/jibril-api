@@ -214,7 +214,7 @@ func TestEventProcessorIssueCreation(t *testing.T) {
 				assert.Equal(t, string(eventKind), issue.Labels["event_kind"])
 
 				// Verify the issue state based on the event kind
-				expectedState := types.IssueStateTriaged
+				expectedState := types.IssueStateAllowed
 				if eventKind == types.EventKindDropIP || eventKind == types.EventKindDropDomain {
 					expectedState = types.IssueStateBlocked
 				}

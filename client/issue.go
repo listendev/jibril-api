@@ -77,6 +77,11 @@ func (c *Client) Issues(ctx context.Context, params types.ListIssues) (types.Pag
 		query.Set("before", string(*params.PageArgs.Before))
 	}
 
+	// Add include_ignored parameter if true
+	if params.IncludeIgnored {
+		query.Set("include_ignored", "true")
+	}
+
 	// Make the request
 	url := "/api/v1/issues"
 	if len(query) > 0 {

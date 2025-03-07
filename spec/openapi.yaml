@@ -331,6 +331,14 @@ paths:
           schema:
             $ref: "#/components/schemas/AgentKind"
         
+        - name: include_ignored
+          in: query
+          description: Whether to include ignored issues in the results
+          required: false
+          schema:
+            type: boolean
+            default: false
+        
         - name: label.*
           in: query
           description: Labels for querying issues (e.g., label.severity=high)
@@ -509,11 +517,15 @@ paths:
               schema:
                 $ref: "#/components/schemas/IssueUpdated"
         "400":
-          description: Invalid input
+          description: Invalid input (e.g., when ignored=true and ignored_reason is missing)
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/Error"
+              examples:
+                missingReason:
+                  value:
+                    error: "ignored_reason is required when ignored is set to true"
         "404":
           description: Issue not found
           content:
@@ -1058,8 +1070,7 @@ components:
     IssueState:
       type: string
       enum:
-        - triaged
-        - ignored
+        - allowed
         - blocked
     
     IssuePriority:
@@ -1101,8 +1112,21 @@ components:
           $ref: "#/components/schemas/IssuePriority"
         labels:
           $ref: "#/components/schemas/IssueLabels"
-        ignore_for:
+        ignored:
+          type: boolean
+          default: false
+        ignored_reason:
           type: string
+          description: Reason for ignoring the issue (populated when ignored=true)
+          nullable: true
+        ignored_by:
+          type: string
+          format: uuid
+          description: ID of the user who ignored the issue
+          nullable: true
+        ignored_at:
+          type: string
+          format: date-time
           nullable: true
         events:
           type: array
@@ -1163,8 +1187,12 @@ components:
         labels:
           $ref: "#/components/schemas/IssueLabels"
           nullable: true
-        ignore_for:
+        ignored:
+          type: boolean
+          nullable: true
+        ignored_reason:
           type: string
+          description: Reason for ignoring the issue (required when ignored=true)
           nullable: true
         reason:
           type: string

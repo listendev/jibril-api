@@ -106,7 +106,7 @@ func setupIssue(ctx context.Context, t *testing.T, client *client.Client, eventI
 	issue := types.CreateIssue{
 		Class:       types.IssueClassNetworkExfiltration,
 		Description: "Test issue description",
-		State:       types.IssueStateTriaged,
+		State:       types.IssueStateAllowed,
 		Priority:    types.IssuePriorityMedium,
 		Labels: types.IssueLabels{
 			"severity": "medium",
@@ -147,7 +147,7 @@ func TestCreateIssue(t *testing.T) {
 		_, err := client.CreateIssue(ctx, types.CreateIssue{
 			Class:       types.IssueClassNetworkExfiltration,
 			Description: "Test description",
-			State:       types.IssueStateTriaged,
+			State:       types.IssueStateAllowed,
 			Priority:    types.IssuePriorityMedium,
 			Labels: types.IssueLabels{
 				"severity": "medium",
@@ -175,7 +175,7 @@ func TestCreateIssue(t *testing.T) {
 		_, err := client.CreateIssue(ctx, types.CreateIssue{
 			Class:       types.IssueClassNetworkExfiltration,
 			Description: "Test description",
-			State:       types.IssueStateTriaged,
+			State:       types.IssueStateAllowed,
 			Priority:    types.IssuePriority("invalid-priority"),
 			Labels: types.IssueLabels{
 				"severity": "medium",
@@ -189,7 +189,7 @@ func TestCreateIssue(t *testing.T) {
 		_, err := client.CreateIssue(ctx, types.CreateIssue{
 			Class:       types.IssueClass("invalid-class"),
 			Description: "Test description",
-			State:       types.IssueStateTriaged,
+			State:       types.IssueStateAllowed,
 			Priority:    types.IssuePriorityMedium,
 			Labels: types.IssueLabels{
 				"severity": "medium",
@@ -203,7 +203,7 @@ func TestCreateIssue(t *testing.T) {
 		_, err := client.CreateIssue(ctx, types.CreateIssue{
 			Class:       types.IssueClassNetworkExfiltration,
 			Description: "Test description",
-			State:       types.IssueStateTriaged,
+			State:       types.IssueStateAllowed,
 			Priority:    types.IssuePriorityMedium,
 			Labels: types.IssueLabels{
 				"severity": "medium",
@@ -217,7 +217,7 @@ func TestCreateIssue(t *testing.T) {
 		issueCreated, err := client.CreateIssue(ctx, types.CreateIssue{
 			Class:       types.IssueClassNetworkExfiltration,
 			Description: "Test issue description",
-			State:       types.IssueStateTriaged,
+			State:       types.IssueStateAllowed,
 			Priority:    types.IssuePriorityMedium,
 			Labels: types.IssueLabels{
 				"severity": "medium",
@@ -290,7 +290,7 @@ func TestIssue(t *testing.T) {
 		assert.Equal(t, issueID, issue.ID)
 		assert.Equal(t, types.IssueClassNetworkExfiltration, issue.Class)
 		assert.Equal(t, "Test issue description", issue.Description)
-		assert.Equal(t, types.IssueStateTriaged, issue.State)
+		assert.Equal(t, types.IssueStateAllowed, issue.State)
 		assert.Equal(t, types.IssuePriorityMedium, issue.Priority)
 		assert.Contains(t, issue.Labels, "severity")
 		assert.Equal(t, "medium", issue.Labels["severity"])
@@ -369,16 +369,6 @@ func TestUpdateIssue(t *testing.T) {
 			State: &invalidState,
 		})
 		assertErrorType(t, err, types.ErrInvalidIssueState)
-	})
-
-	t.Run("state to ignored without ignore_for", func(t *testing.T) {
-		ignoredState := types.IssueStateIgnored
-		_, err := client.UpdateIssue(ctx, issueID, types.UpdateIssue{
-			State:  &ignoredState,
-			Reason: ptr("Testing ignore"),
-			// Missing IgnoreFor
-		})
-		assertErrorType(t, err, types.ErrInvalidIssueIgnoreFor)
 	})
 
 	t.Run("state without reason", func(t *testing.T) {
@@ -476,12 +466,11 @@ func TestUpdateIssue(t *testing.T) {
 		assert.Equal(t, newState, issue.State)
 	})
 
-	t.Run("update state to ignored", func(t *testing.T) {
-		newState := types.IssueStateIgnored
+	t.Run("update state to allowed", func(t *testing.T) {
+		newState := types.IssueStateAllowed
 		updated, err := client.UpdateIssue(ctx, issueID, types.UpdateIssue{
-			State:     &newState,
-			Reason:    ptr("Ignoring for testing"),
-			IgnoreFor: ptr("7 days"),
+			State:  &newState,
+			Reason: ptr("Allowing for testing"),
 		})
 		require.NoError(t, err)
 		assert.Equal(t, issueID, updated.ID)
@@ -490,7 +479,6 @@ func TestUpdateIssue(t *testing.T) {
 		issue, err := client.Issue(ctx, issueID)
 		require.NoError(t, err)
 		assert.Equal(t, newState, issue.State)
-		assert.Equal(t, "7 days", issue.IgnoreFor)
 	})
 
 	t.Run("update with invalid event IDs", func(t *testing.T) {
@@ -614,6 +602,269 @@ func TestDeleteIssue(t *testing.T) {
 	})
 }
 
+//nolint:maintidx // This test function has high cognitive complexity due to multiple test cases
+func TestIgnoredIssues(t *testing.T) {
+	ctx := t.Context()
+	client := testclient.WithToken(t)
+
+	// Create an agent to use for testing
+	agentCreated, _ := setupAgent(ctx, t, client)
+
+	// Create an event to associate with issues
+	eventID := setupEvent(ctx, t, client, agentCreated)
+
+	// Create a regular non-ignored issue
+	regularIssueID := setupIssue(ctx, t, client, eventID,
+		WithClass(types.IssueClassNetworkExfiltration),
+		WithIssueState(types.IssueStateAllowed),
+		WithIssueLabels(types.IssueLabels{
+			"label1": "value1",
+		}),
+	)
+
+	// Create an issue we'll mark as ignored
+	issueToIgnore := setupIssue(ctx, t, client, eventID,
+		WithClass(types.IssueClassNetworkExfiltration),
+		WithIssueState(types.IssueStateAllowed),
+		WithIssueLabels(types.IssueLabels{
+			"label2": "value2",
+		}),
+	)
+
+	// Create an issue we'll mark as ignored without providing a reason
+	issueToIgnoreNoReason := setupIssue(ctx, t, client, eventID,
+		WithClass(types.IssueClassNetworkExfiltration),
+		WithIssueState(types.IssueStateAllowed),
+		WithIssueLabels(types.IssueLabels{
+			"label3": "value3",
+		}),
+	)
+
+	// Test ignoring an issue with a reason
+	t.Run("ignore_with_reason", func(t *testing.T) {
+		isIgnored := true
+		ignoreReason := "This is a test ignore reason"
+
+		// Update the issue to set ignored=true with a reason
+		_, err := client.UpdateIssue(ctx, issueToIgnore, types.UpdateIssue{
+			Ignored:       &isIgnored,
+			IgnoredReason: &ignoreReason,
+		})
+		require.NoError(t, err)
+
+		// Fetch the issue and check if ignored is set correctly
+		issue, err := client.Issue(ctx, issueToIgnore)
+		require.NoError(t, err)
+		assert.True(t, issue.Ignored, "Issue should be marked as ignored")
+		assert.Equal(t, ignoreReason, issue.IgnoredReason, "Issue should have the correct ignore reason")
+		assert.NotNil(t, issue.IgnoredAt, "Issue should have an ignored_at timestamp")
+	})
+
+	// Test that setting ignored requires a reason
+	t.Run("ignored_requires_reason", func(t *testing.T) {
+		isIgnored := true
+
+		// Try to update the issue to set ignored=true without a reason - should fail
+		_, err := client.UpdateIssue(ctx, issueToIgnoreNoReason, types.UpdateIssue{
+			Ignored: &isIgnored,
+		})
+		require.Error(t, err, "Setting ignored=true without a reason should fail")
+		assert.Contains(t, err.Error(), "ignored_reason is required", "Error should mention that ignored_reason is required")
+
+		// Now try again with a reason - should succeed
+		ignoreReason := "Testing ignore"
+		_, err = client.UpdateIssue(ctx, issueToIgnoreNoReason, types.UpdateIssue{
+			Ignored:       &isIgnored,
+			IgnoredReason: &ignoreReason,
+		})
+		require.NoError(t, err)
+
+		// Fetch the issue and check if ignored is set correctly
+		issue, err := client.Issue(ctx, issueToIgnoreNoReason)
+		require.NoError(t, err)
+		assert.True(t, issue.Ignored, "Issue should be marked as ignored")
+		assert.Equal(t, ignoreReason, issue.IgnoredReason, "Issue should have the provided ignore reason")
+		assert.NotNil(t, issue.IgnoredAt, "Issue should have an ignored_at timestamp")
+
+		// Save the timestamp for later comparison
+		initialIgnoredAt := *issue.IgnoredAt
+
+		// Now toggle ignored off
+		isIgnored = false
+		_, err = client.UpdateIssue(ctx, issueToIgnoreNoReason, types.UpdateIssue{
+			Ignored: &isIgnored,
+		})
+		require.NoError(t, err)
+
+		// Fetch and verify it's not ignored anymore
+		issue, err = client.Issue(ctx, issueToIgnoreNoReason)
+		require.NoError(t, err)
+		assert.False(t, issue.Ignored, "Issue should no longer be marked as ignored")
+
+		// Now toggle back to ignored with a reason
+		isIgnored = true
+		_, err = client.UpdateIssue(ctx, issueToIgnoreNoReason, types.UpdateIssue{
+			Ignored:       &isIgnored,
+			IgnoredReason: &ignoreReason,
+		})
+		require.NoError(t, err)
+
+		// Fetch and verify it's ignored again with a new timestamp
+		issue, err = client.Issue(ctx, issueToIgnoreNoReason)
+		require.NoError(t, err)
+		assert.True(t, issue.Ignored, "Issue should be marked as ignored again")
+		assert.NotNil(t, issue.IgnoredAt, "Issue should have an ignored_at timestamp")
+		assert.NotEqual(t, initialIgnoredAt, *issue.IgnoredAt, "A new timestamp should be assigned when re-ignoring an issue")
+	})
+
+	// Test listing issues with and without the include_ignored parameter
+	t.Run("list_with_include_ignored", func(t *testing.T) {
+		// Set up two ignored issues to test with
+		isIgnored := true
+		ignoreReason1 := "Ignoring for listing test 1"
+		_, err := client.UpdateIssue(ctx, issueToIgnore, types.UpdateIssue{
+			Ignored:       &isIgnored,
+			IgnoredReason: &ignoreReason1,
+		})
+		require.NoError(t, err, "Failed to ignore first issue")
+
+		ignoreReason2 := "Ignoring for listing test 2"
+		_, err = client.UpdateIssue(ctx, issueToIgnoreNoReason, types.UpdateIssue{
+			Ignored:       &isIgnored,
+			IgnoredReason: &ignoreReason2,
+		})
+		require.NoError(t, err, "Failed to ignore second issue")
+
+		// Verify both issues are marked as ignored
+		issue1, err := client.Issue(ctx, issueToIgnore)
+		require.NoError(t, err)
+		assert.True(t, issue1.Ignored, "First issue should be marked as ignored")
+		assert.Equal(t, ignoreReason1, issue1.IgnoredReason)
+
+		issue2, err := client.Issue(ctx, issueToIgnoreNoReason)
+		require.NoError(t, err)
+		assert.True(t, issue2.Ignored, "Second issue should be marked as ignored")
+		assert.Equal(t, ignoreReason2, issue2.IgnoredReason)
+
+		// First, get issues without include_ignored (should exclude ignored issues)
+		defaultList, err := client.Issues(ctx, types.ListIssues{})
+		require.NoError(t, err)
+
+		// Check that only non-ignored issues are included
+		var foundRegular, foundIgnored, foundIgnoredNoReason bool
+		for _, issue := range defaultList.Items {
+			if issue.ID == regularIssueID {
+				foundRegular = true
+			}
+			if issue.ID == issueToIgnore {
+				foundIgnored = true
+			}
+			if issue.ID == issueToIgnoreNoReason {
+				foundIgnoredNoReason = true
+			}
+		}
+
+		assert.True(t, foundRegular, "Regular issue should be included in default listing")
+		assert.False(t, foundIgnored, "Ignored issue should not be included in default listing")
+		assert.False(t, foundIgnoredNoReason, "Ignored issue (no reason) should not be included in default listing")
+
+		// Now, get issues with include_ignored=true
+		includeIgnoredList := types.ListIssues{
+			IncludeIgnored: true,
+		}
+		withIgnoredList, err := client.Issues(ctx, includeIgnoredList)
+		require.NoError(t, err)
+
+		// Check that all issues are included
+		foundRegular, foundIgnored, foundIgnoredNoReason = false, false, false
+		for _, issue := range withIgnoredList.Items {
+			if issue.ID == regularIssueID {
+				foundRegular = true
+			}
+			if issue.ID == issueToIgnore {
+				foundIgnored = true
+			}
+			if issue.ID == issueToIgnoreNoReason {
+				foundIgnoredNoReason = true
+			}
+		}
+
+		assert.True(t, foundRegular, "Regular issue should be included when including ignored")
+		assert.True(t, foundIgnored, "Ignored issue should be included when including ignored")
+		assert.True(t, foundIgnoredNoReason, "Ignored issue (no reason) should be included when including ignored")
+	})
+
+	// Test state and ignored interaction
+	t.Run("state_and_ignored_interaction", func(t *testing.T) {
+		// Create a new issue
+		stateTestIssueID := setupIssue(ctx, t, client, eventID,
+			WithClass(types.IssueClassNetworkExfiltration),
+			WithIssueState(types.IssueStateAllowed),
+		)
+
+		// First update the state to blocked
+		blockedState := types.IssueStateBlocked
+		stateReason := "Security issue found"
+		_, err := client.UpdateIssue(ctx, stateTestIssueID, types.UpdateIssue{
+			State:  &blockedState,
+			Reason: &stateReason,
+		})
+		require.NoError(t, err)
+
+		// Fetch and verify the state
+		issue, err := client.Issue(ctx, stateTestIssueID)
+		require.NoError(t, err)
+		assert.Equal(t, types.IssueStateBlocked, issue.State, "Issue should be in blocked state")
+		assert.False(t, issue.Ignored, "Issue should not be marked as ignored")
+
+		// Now mark it as ignored
+		isIgnored := true
+		ignoreReason := "Not a concern anymore"
+		_, err = client.UpdateIssue(ctx, stateTestIssueID, types.UpdateIssue{
+			Ignored:       &isIgnored,
+			IgnoredReason: &ignoreReason,
+		})
+		require.NoError(t, err)
+
+		// Fetch and verify state and ignored flags
+		issue, err = client.Issue(ctx, stateTestIssueID)
+		require.NoError(t, err)
+		assert.Equal(t, types.IssueStateBlocked, issue.State, "Issue state should remain blocked")
+		assert.True(t, issue.Ignored, "Issue should be marked as ignored")
+		assert.Equal(t, ignoreReason, issue.IgnoredReason, "Issue should have the correct ignore reason")
+
+		// Change the state back to allowed without changing ignored
+		allowedState := types.IssueStateAllowed
+		stateReason = "Reclassified as allowed"
+		_, err = client.UpdateIssue(ctx, stateTestIssueID, types.UpdateIssue{
+			State:  &allowedState,
+			Reason: &stateReason,
+		})
+		require.NoError(t, err)
+
+		// Fetch and verify the state and ignored status
+		issue, err = client.Issue(ctx, stateTestIssueID)
+		require.NoError(t, err)
+		assert.Equal(t, types.IssueStateAllowed, issue.State, "Issue should be in allowed state")
+		assert.True(t, issue.Ignored, "Issue should still be marked as ignored")
+
+		// Update state and turn off ignored in one operation
+		isIgnored = false
+		_, err = client.UpdateIssue(ctx, stateTestIssueID, types.UpdateIssue{
+			State:   &blockedState,
+			Reason:  &stateReason,
+			Ignored: &isIgnored,
+		})
+		require.NoError(t, err)
+
+		// Fetch and verify both were updated
+		issue, err = client.Issue(ctx, stateTestIssueID)
+		require.NoError(t, err)
+		assert.Equal(t, types.IssueStateBlocked, issue.State, "Issue should be in blocked state")
+		assert.False(t, issue.Ignored, "Issue should not be marked as ignored")
+	})
+}
+
 //nolint:gocognit,maintidx // This test function has high cognitive complexity due to multiple test cases
 func TestIssues(t *testing.T) {
 	ctx := t.Context()
@@ -632,7 +883,7 @@ func TestIssues(t *testing.T) {
 		id1 := setupIssue(ctx, t, client, githubEventID,
 			WithClass(types.IssueClassNetworkExfiltration),
 			WithIssuePriority(types.IssuePriorityHigh),
-			WithIssueState(types.IssueStateTriaged),
+			WithIssueState(types.IssueStateAllowed),
 			WithIssueLabels(types.IssueLabels{
 				"severity": "high",
 				"type":     "security",
@@ -656,7 +907,7 @@ func TestIssues(t *testing.T) {
 		id3 := setupIssue(ctx, t, client, githubEventID,
 			WithClass(types.IssueClassNetworkExfiltration),
 			WithIssuePriority(types.IssuePriorityLow),
-			WithIssueState(types.IssueStateIgnored),
+			WithIssueState(types.IssueStateAllowed),
 			WithIssueLabels(types.IssueLabels{
 				"severity": "low",
 				"type":     "bug",
@@ -705,7 +956,7 @@ func TestIssues(t *testing.T) {
 	t.Run("filter by state", func(t *testing.T) {
 		setupTestIssues(t)
 
-		state := types.IssueStateTriaged
+		state := types.IssueStateAllowed
 		result, err := client.Issues(ctx, types.ListIssues{
 			Filters: &types.IssueFilters{
 				State: &state,
@@ -761,7 +1012,7 @@ func TestIssues(t *testing.T) {
 		githubIssueID := setupIssue(ctx, t, client, githubEventID,
 			WithClass(types.IssueClassCryptoMiner),
 			WithIssuePriority(types.IssuePriorityMedium),
-			WithIssueState(types.IssueStateTriaged),
+			WithIssueState(types.IssueStateAllowed),
 			WithIssueLabels(types.IssueLabels{
 				"agent": "github",
 			}),

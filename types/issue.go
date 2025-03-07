@@ -11,8 +11,7 @@ import (
 
 // Issue state and priority constants.
 const (
-	IssueStateTriaged IssueState = "triaged"
-	IssueStateIgnored IssueState = "ignored"
+	IssueStateAllowed IssueState = "allowed"
 	IssueStateBlocked IssueState = "blocked"
 
 	IssuePriorityLow      IssuePriority = "low"
@@ -46,7 +45,7 @@ func (s IssueState) String() string {
 
 func (s IssueState) IsValid() bool {
 	switch s {
-	case IssueStateTriaged, IssueStateIgnored, IssueStateBlocked:
+	case IssueStateAllowed, IssueStateBlocked:
 		return true
 	}
 	return false
@@ -248,18 +247,21 @@ func (f IssueFilters) IsEmpty() bool {
 
 // Issue represents the stored issue model.
 type Issue struct {
-	ID          string        `db:"id"          json:"id"`
-	ProjectID   string        `db:"project_id"  json:"-"` // Not exposed in API
-	Class       IssueClass    `db:"class"       json:"class"`
-	Description string        `db:"description" json:"description"`
-	State       IssueState    `db:"state"       json:"state"`
-	Priority    IssuePriority `db:"priority"    json:"priority"`
-	Labels      IssueLabels   `db:"labels"      json:"labels"`
-	IgnoreFor   string        `db:"ignore_for"  json:"ignore_for,omitempty"`
-	Events      []Event       `db:"-"           json:"events"` // No omitempty
-	CreatedAt   time.Time     `db:"created_at"  json:"created_at"`
-	UpdatedAt   time.Time     `db:"updated_at"  json:"updated_at"`
-	DeletedAt   *time.Time    `db:"deleted_at"  json:"deleted_at,omitempty"`
+	ID            string        `db:"id"             json:"id"`
+	ProjectID     string        `db:"project_id"     json:"-"` // Not exposed in API
+	Class         IssueClass    `db:"class"          json:"class"`
+	Description   string        `db:"description"    json:"description"`
+	State         IssueState    `db:"state"          json:"state"`
+	Priority      IssuePriority `db:"priority"       json:"priority"`
+	Labels        IssueLabels   `db:"labels"         json:"labels"`
+	Ignored       bool          `db:"ignored"        json:"ignored"`
+	IgnoredReason string        `db:"ignored_reason" json:"ignored_reason,omitempty"`
+	IgnoredBy     string        `db:"ignored_by"     json:"ignored_by,omitempty"`
+	IgnoredAt     *time.Time    `db:"ignored_at"     json:"ignored_at,omitempty"`
+	Events        []Event       `db:"-"              json:"events"` // No omitempty
+	CreatedAt     time.Time     `db:"created_at"     json:"created_at"`
+	UpdatedAt     time.Time     `db:"updated_at"     json:"updated_at"`
+	DeletedAt     *time.Time    `db:"deleted_at"     json:"deleted_at,omitempty"`
 }
 
 // CreateIssue represents the request to create a new issue.
@@ -308,21 +310,23 @@ type IssueCreated struct {
 
 // UpdateIssue represents the request to update an existing issue.
 type UpdateIssue struct {
-	Class       *IssueClass    `json:"class,omitempty"`
-	Description *string        `json:"description,omitempty"`
-	State       *IssueState    `json:"state,omitempty"`
-	Priority    *IssuePriority `json:"priority,omitempty"`
-	Labels      *IssueLabels   `json:"labels,omitempty"`
-	IgnoreFor   *string        `json:"ignore_for,omitempty"`
-	Reason      *string        `json:"reason,omitempty"`    // Reason for state change
-	EventIDs    []string       `json:"event_ids,omitempty"` // Event IDs to add to the issue
+	Class         *IssueClass    `json:"class,omitempty"`
+	Description   *string        `json:"description,omitempty"`
+	State         *IssueState    `json:"state,omitempty"`
+	Priority      *IssuePriority `json:"priority,omitempty"`
+	Labels        *IssueLabels   `json:"labels,omitempty"`
+	Ignored       *bool          `json:"ignored,omitempty"`
+	IgnoredReason *string        `json:"ignored_reason,omitempty"`
+	IgnoredBy     *string        `json:"-"`                   // For internal use only, not exposed in API
+	Reason        *string        `json:"reason,omitempty"`    // Reason for state change
+	EventIDs      []string       `json:"event_ids,omitempty"` // Event IDs to add to the issue
 }
 
 func (u *UpdateIssue) Validate() error {
 	// Check if any fields are specified
 	if u.Class == nil && u.Description == nil && u.State == nil &&
-		u.Priority == nil && u.Labels == nil && u.IgnoreFor == nil &&
-		u.Reason == nil && len(u.EventIDs) == 0 {
+		u.Priority == nil && u.Labels == nil && u.Ignored == nil &&
+		u.IgnoredReason == nil && u.Reason == nil && len(u.EventIDs) == 0 {
 		return errs.InvalidArgumentError("at least one field is required")
 	}
 
@@ -346,15 +350,14 @@ func (u *UpdateIssue) Validate() error {
 		return ErrInvalidIssuePriority
 	}
 
-	// If state is being changed to ignored, ensure ignore_for is provided
-	if u.State != nil && *u.State == IssueStateIgnored &&
-		(u.IgnoreFor == nil || *u.IgnoreFor == "") {
-		return ErrInvalidIssueIgnoreFor
-	}
-
 	// If state is being changed, require a reason
 	if u.State != nil && (u.Reason == nil || *u.Reason == "") {
 		return ErrInvalidIssueReason
+	}
+
+	// If ignored is being set to true, require a reason
+	if u.Ignored != nil && *u.Ignored && (u.IgnoredReason == nil || *u.IgnoredReason == "") {
+		return errs.InvalidArgumentError("ignored_reason is required when ignored is set to true")
 	}
 
 	return nil
@@ -368,10 +371,11 @@ type IssueUpdated struct {
 
 // ListIssues represents the request to list issues with filtering and pagination.
 type ListIssues struct {
-	ProjectID string        `json:"-"` // Set internally from context
-	Labels    IssueLabels   `json:"labels,omitempty"`
-	Filters   *IssueFilters `json:"filters,omitempty"`
-	PageArgs  PageArgs      `json:"pageArgs,omitempty"`
+	ProjectID      string        `json:"-"` // Set internally from context
+	Labels         IssueLabels   `json:"labels,omitempty"`
+	Filters        *IssueFilters `json:"filters,omitempty"`
+	PageArgs       PageArgs      `json:"pageArgs,omitempty"`
+	IncludeIgnored bool          `json:"include_ignored,omitempty"` // Whether to include ignored issues, default is false
 }
 
 // Validate ensures the ListIssues request is valid.
