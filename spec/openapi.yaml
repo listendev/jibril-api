@@ -1,7 +1,7 @@
 openapi: 3.0.3
 info:
   title: Jibril API
-  description: API for managing events, issues, and other features associated with the Jibril agent.
+  description: API for managing events, issues, agents, and network policies associated with the Jibril agent.
   version: 1.0.0
   license:
     name: Proprietary
@@ -542,7 +542,430 @@ paths:
                 error: "permission denied"
         "500":
           description: Internal server error
-  
+
+  # New Network Policy endpoints
+  /api/v1/network_policies:
+    post:
+      security:
+        - BearerAuth: []
+      summary: Create a new network policy
+      operationId: createNetworkPolicy
+      requestBody:
+        description: Network policy object that needs to be created
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateNetworkPolicy"
+      responses:
+        "201":
+          description: Network policy created successfully
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/NetworkPolicyCreated"
+        "400":
+          description: Invalid input
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "409":
+          description: Network policy already exists
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "500":
+          description: Internal server error
+
+  /api/v1/network_policies/{id}:
+    get:
+      security:
+        - BearerAuth: []
+      summary: Get network policy by ID
+      operationId: getNetworkPolicyById
+      parameters:
+        - name: id
+          in: path
+          description: ID of network policy to return
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: Network policy found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/NetworkPolicy"
+        "400":
+          description: Invalid ID format
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: Network policy not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "500":
+          description: Internal server error
+
+    patch:
+      security:
+        - BearerAuth: []
+      summary: Update network policy fields by ID
+      operationId: updateNetworkPolicyById
+      parameters:
+        - name: id
+          in: path
+          description: ID of network policy to update
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        description: Network policy fields that need to be updated
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateNetworkPolicy"
+      responses:
+        "200":
+          description: Network policy updated successfully
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/NetworkPolicyUpdated"
+        "400":
+          description: Invalid input
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: Network policy not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "500":
+          description: Internal server error
+
+    delete:
+      security:
+        - BearerAuth: []
+      summary: Delete network policy by ID
+      operationId: deleteNetworkPolicyById
+      parameters:
+        - name: id
+          in: path
+          description: ID of network policy to delete
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "204":
+          description: Network policy deleted
+        "400":
+          description: Invalid ID format
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: Network policy not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "500":
+          description: Internal server error
+
+  /api/v1/network_policies/scope/{scope}:
+    get:
+      security:
+        - BearerAuth: []
+      summary: List network policies by scope
+      operationId: listNetworkPoliciesByScope
+      parameters:
+        - name: scope
+          in: path
+          description: Scope of network policies to return (global, repo, or workflow)
+          required: true
+          schema:
+            $ref: "#/components/schemas/NetworkPolicyScope"
+      responses:
+        "200":
+          description: List of network policies
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/NetworkPolicy"
+        "400":
+          description: Invalid scope
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "500":
+          description: Internal server error
+
+  /api/v1/network_policies/merged:
+    get:
+      security:
+        - BearerAuth: []
+      summary: Get merged network policy for a specific context
+      operationId: getMergedNetworkPolicy
+      parameters:
+        - name: repository_id
+          in: query
+          description: Repository ID for context
+          required: false
+          schema:
+            type: string
+        - name: workflow_name
+          in: query
+          description: Workflow name for context
+          required: false
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Merged network policy
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MergedNetworkPolicy"
+        "400":
+          description: Invalid parameters
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "500":
+          description: Internal server error
+
+  /api/v1/network_policies/{policy_id}/rules:
+    post:
+      security:
+        - BearerAuth: []
+      summary: Create a new network policy rule
+      operationId: createNetworkPolicyRule
+      parameters:
+        - name: policy_id
+          in: path
+          description: ID of network policy to add rule to
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        description: Network policy rule object that needs to be created
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateNetworkPolicyRule"
+      responses:
+        "201":
+          description: Network policy rule created successfully
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/NetworkPolicyRuleCreated"
+        "400":
+          description: Invalid input
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: Network policy not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "500":
+          description: Internal server error
+
+  /api/v1/network_policy_rules/{id}:
+    get:
+      security:
+        - BearerAuth: []
+      summary: Get network policy rule by ID
+      operationId: getNetworkPolicyRuleById
+      parameters:
+        - name: id
+          in: path
+          description: ID of network policy rule to return
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: Network policy rule found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/NetworkPolicyRule"
+        "400":
+          description: Invalid ID format
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: Network policy rule not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "500":
+          description: Internal server error
+
+    patch:
+      security:
+        - BearerAuth: []
+      summary: Update network policy rule fields by ID
+      operationId: updateNetworkPolicyRuleById
+      parameters:
+        - name: id
+          in: path
+          description: ID of network policy rule to update
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        description: Network policy rule fields that need to be updated
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateNetworkPolicyRule"
+      responses:
+        "200":
+          description: Network policy rule updated successfully
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/NetworkPolicyRuleUpdated"
+        "400":
+          description: Invalid input
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: Network policy rule not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "500":
+          description: Internal server error
+
+    delete:
+      security:
+        - BearerAuth: []
+      summary: Delete network policy rule by ID
+      operationId: deleteNetworkPolicyRuleById
+      parameters:
+        - name: id
+          in: path
+          description: ID of network policy rule to delete
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "204":
+          description: Network policy rule deleted
+        "400":
+          description: Invalid ID format
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: Network policy rule not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "500":
+          description: Internal server error
+
   /healthz:
     get:
       security: []
@@ -937,6 +1360,8 @@ components:
           $ref: "#/components/schemas/GitHubContext"
         kubernetes_context:
           $ref: "#/components/schemas/AgentKubernetesContext"
+        network_policy:
+          $ref: "#/components/schemas/MergedNetworkPolicy"
         active:
           type: boolean
         created_at:
@@ -1005,15 +1430,18 @@ components:
     AgentCreated:
       type: object
       required:
+        - id
         - agent_token
-        - agent_id
       properties:
+        id:
+          type: string
+          description: Unique identifier for the agent.
         agent_token:
           type: string
           description: JWT token to be used for agent authentication. This token should be passed in the X-Agent-Token header for authenticated agent operations like event ingestion.
-        agent_id:
-          type: string
-          description: Unique identifier for the agent.
+        network_policy:
+          $ref: "#/components/schemas/MergedNetworkPolicy"
+          description: Merged network policy for this agent based on its context.
     
     Page:
       type: object
@@ -1226,3 +1654,231 @@ components:
         updated_at:
           type: string
           format: date-time
+    
+    # Network policy schemas
+    NetworkPolicyScope:
+      type: string
+      enum:
+        - global
+        - repo
+        - workflow
+      description: Scope level of the network policy
+
+    NetworkPolicyType:
+      type: string
+      enum:
+        - allow
+        - deny
+      description: Action to take on matched rules
+
+    NetworkPolicyCIDRMode:
+      type: string
+      enum:
+        - both
+        - ipv4
+        - ipv6
+      description: Which IP versions to enforce
+
+    NetworkPolicyResolveMode:
+      type: string
+      enum:
+        - strict
+        - bypass
+        - permissive
+      description: How to handle DNS resolution
+
+    NetworkPolicyRuleType:
+      type: string
+      enum:
+        - cidr
+        - domain
+      description: Type of network policy rule
+
+    NetworkPolicyConfig:
+      type: object
+      required:
+        - cidr_mode
+        - cidr_policy
+        - resolve_mode
+        - resolve_policy
+      properties:
+        cidr_mode:
+          $ref: "#/components/schemas/NetworkPolicyCIDRMode"
+          description: Which IP versions to enforce
+        cidr_policy:
+          $ref: "#/components/schemas/NetworkPolicyType"
+          description: Default policy for CIDR rules
+        resolve_mode:
+          $ref: "#/components/schemas/NetworkPolicyResolveMode"
+          description: How to handle DNS resolution
+        resolve_policy:
+          $ref: "#/components/schemas/NetworkPolicyType"
+          description: Default policy for DNS resolution
+    
+    NetworkPolicyRule:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        policy_id:
+          type: string
+          format: uuid
+        type:
+          $ref: "#/components/schemas/NetworkPolicyRuleType"
+        value:
+          type: string
+          description: CIDR block or domain pattern
+        action:
+          $ref: "#/components/schemas/NetworkPolicyType"
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+    
+    CreateNetworkPolicyRule:
+      type: object
+      required:
+        - type
+        - value
+        - action
+      properties:
+        type:
+          $ref: "#/components/schemas/NetworkPolicyRuleType"
+        value:
+          type: string
+          description: CIDR block or domain pattern
+        action:
+          $ref: "#/components/schemas/NetworkPolicyType"
+    
+    UpdateNetworkPolicyRule:
+      type: object
+      properties:
+        value:
+          type: string
+          description: CIDR block or domain pattern
+        action:
+          $ref: "#/components/schemas/NetworkPolicyType"
+    
+    NetworkPolicyRuleCreated:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+    
+    NetworkPolicyRuleUpdated:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        updated_at:
+          type: string
+          format: date-time
+    
+    NetworkPolicy:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        scope:
+          $ref: "#/components/schemas/NetworkPolicyScope"
+        repository_id:
+          type: string
+          description: Repository ID (required for repo and workflow scopes)
+        workflow_name:
+          type: string
+          description: Workflow name (required for workflow scope)
+        config:
+          $ref: "#/components/schemas/NetworkPolicyConfig"
+        rules:
+          type: array
+          items:
+            $ref: "#/components/schemas/NetworkPolicyRule"
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+    
+    CreateNetworkPolicy:
+      type: object
+      required:
+        - scope
+        - config
+      properties:
+        scope:
+          $ref: "#/components/schemas/NetworkPolicyScope"
+        repository_id:
+          type: string
+          description: Repository ID (required for repo and workflow scopes)
+        workflow_name:
+          type: string
+          description: Workflow name (required for workflow scope)
+        config:
+          $ref: "#/components/schemas/NetworkPolicyConfig"
+        rules:
+          type: array
+          items:
+            $ref: "#/components/schemas/CreateNetworkPolicyRule"
+    
+    UpdateNetworkPolicy:
+      type: object
+      required:
+        - config
+      properties:
+        config:
+          $ref: "#/components/schemas/NetworkPolicyConfig"
+    
+    NetworkPolicyCreated:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+    
+    NetworkPolicyUpdated:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        updated_at:
+          type: string
+          format: date-time
+    
+    MergedNetworkPolicy:
+      type: object
+      properties:
+        config:
+          $ref: "#/components/schemas/NetworkPolicyConfig"
+        rules:
+          type: array
+          items:
+            $ref: "#/components/schemas/NetworkPolicyRule"
+        global_policy:
+          $ref: "#/components/schemas/NetworkPolicy"
+          nullable: true
+        repo_policy:
+          $ref: "#/components/schemas/NetworkPolicy"
+          nullable: true
+        workflow_policy:
+          $ref: "#/components/schemas/NetworkPolicy"
+          nullable: true

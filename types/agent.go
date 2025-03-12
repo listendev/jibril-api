@@ -143,6 +143,7 @@ type Agent struct {
 	Kind              AgentKind               `db:"kind"       json:"kind"`
 	GithubContext     *GitHubContext          `db:"-"          json:"github_context,omitempty"`
 	KubernetesContext *AgentKubernetesContext `db:"-"          json:"kubernetes_context,omitempty"`
+	NetworkPolicy     *MergedNetworkPolicy    `db:"-"          json:"network_policy,omitempty"`
 	Active            bool                    `db:"active"     json:"active"`
 	CreatedAt         time.Time               `db:"created_at" json:"created_at"`
 	UpdatedAt         time.Time               `db:"updated_at" json:"updated_at"`
@@ -223,8 +224,9 @@ func (c *CreateAgent) Validate() error {
 }
 
 type AgentCreated struct {
-	ID         string `json:"id"`
-	AgentToken string `json:"agent_token"`
+	ID            string               `json:"id"`
+	AgentToken    string               `json:"agent_token"`
+	NetworkPolicy *MergedNetworkPolicy `json:"network_policy,omitempty"`
 }
 
 // UpdateAgent represents the request to update an existing agent.

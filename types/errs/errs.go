@@ -54,3 +54,18 @@ func (e InvalidAgentIDError) Is(target error) bool {
 	}
 	return false
 }
+
+const ErrConflict = ConflictError("resource already exists")
+
+type ConflictError string
+
+func (e ConflictError) Error() string { return string(e) }
+func (e ConflictError) Is(target error) bool {
+	if target == ErrConflict {
+		return true // All ConflictError types should match ErrConflict
+	}
+	if target, ok := target.(ConflictError); ok {
+		return e == target
+	}
+	return false
+}
