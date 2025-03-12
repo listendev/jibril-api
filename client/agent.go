@@ -51,7 +51,7 @@ func (c *Client) Agents(ctx context.Context, in types.ListAgents) (types.Page[ty
 
 	if in.First != nil {
 		firstVal := *in.First
-		if firstVal <= uint(math.MaxInt64) {
+		if firstVal <= math.MaxUint {
 			int64Conv := int64(firstVal)
 			intConv := int(int64Conv)
 			q.Set("first", strconv.Itoa(intConv))
@@ -62,7 +62,7 @@ func (c *Client) Agents(ctx context.Context, in types.ListAgents) (types.Page[ty
 
 	if in.Last != nil {
 		lastVal := *in.Last
-		if lastVal <= uint(math.MaxInt64) {
+		if lastVal <= math.MaxUint {
 			int64Conv := int64(lastVal)
 			intConv := int(int64Conv)
 			q.Set("last", strconv.Itoa(intConv))
