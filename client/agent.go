@@ -3,12 +3,11 @@ package client
 import (
 	"context"
 	"maps"
-	"math"
 	"net/http"
 	"net/url"
 	"strconv"
 
-	"github.com/listendev/jibril-server/types"
+	"github.com/listendev/jibril-api/types"
 )
 
 func (c *Client) CreateAgent(ctx context.Context, agent types.CreateAgent) (types.AgentCreated, error) {
@@ -41,34 +40,18 @@ func (c *Client) Agents(ctx context.Context, in types.ListAgents) (types.Page[ty
 	maps.Copy(q, q1)
 	maps.Copy(q, q2)
 
-	if in.After != nil {
-		q.Set("after", string(*in.After))
+	// Add pagination parameters
+	if in.PageArgs.First != nil {
+		q.Set("first", strconv.FormatUint(uint64(*in.PageArgs.First), 10))
 	}
-
-	if in.Before != nil {
-		q.Set("before", string(*in.Before))
+	if in.PageArgs.Last != nil {
+		q.Set("last", strconv.FormatUint(uint64(*in.PageArgs.Last), 10))
 	}
-
-	if in.First != nil {
-		firstVal := *in.First
-		if firstVal <= uint(math.MaxInt64) {
-			int64Conv := int64(firstVal)
-			intConv := int(int64Conv)
-			q.Set("first", strconv.Itoa(intConv))
-		} else {
-			q.Set("first", strconv.FormatUint(uint64(firstVal), 10))
-		}
+	if in.PageArgs.After != nil {
+		q.Set("after", string(*in.PageArgs.After))
 	}
-
-	if in.Last != nil {
-		lastVal := *in.Last
-		if lastVal <= uint(math.MaxInt64) {
-			int64Conv := int64(lastVal)
-			intConv := int(int64Conv)
-			q.Set("last", strconv.Itoa(intConv))
-		} else {
-			q.Set("last", strconv.FormatUint(uint64(lastVal), 10))
-		}
+	if in.PageArgs.Before != nil {
+		q.Set("before", string(*in.PageArgs.Before))
 	}
 
 	path := "/api/v1/agents?" + q.Encode()

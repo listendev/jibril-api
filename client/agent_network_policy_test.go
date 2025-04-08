@@ -5,9 +5,9 @@ import (
 	"testing"
 
 	"github.com/google/uuid"
-	"github.com/listendev/jibril-server/client"
-	"github.com/listendev/jibril-server/client/testclient"
-	"github.com/listendev/jibril-server/types"
+	"github.com/listendev/jibril-api/client"
+	"github.com/listendev/jibril-api/client/testclient"
+	"github.com/listendev/jibril-api/types"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -23,7 +23,7 @@ func WithGitHubContextSimple(owner, repo, repoID, workflow, runID, runAttempt st
 
 		// Set default values for required fields if not provided
 		if workflow == "" {
-			workflow = "test-workflow"
+			workflow = testWorkflowName // Use the test workflow name as default
 		}
 		if runID == "" {
 			runID = "123456"
@@ -87,9 +87,9 @@ func createAgentWithOptions(ctx context.Context, t *testing.T, client *client.Cl
 
 // TestAgentNetworkPolicyRetrieval tests that agents correctly receive network policies.
 func TestAgentNetworkPolicyRetrieval(t *testing.T) {
-	t.Skip("Skipping network policy test until we fix all issues")
 	ctx := t.Context()
-	client := testclient.WithToken(t)
+	// Create a project and get a client with a project token
+	_, client := testclient.WithProjectTokenForTest(t)
 
 	// Clean up existing policies first
 	cleanupNetworkPolicies(ctx, t, client)
@@ -184,26 +184,27 @@ func TestAgentNetworkPolicyRetrieval(t *testing.T) {
 
 	t.Run("agent_with_repo_context", func(t *testing.T) {
 		// Create a GitHub agent with repository context
+		// Note: workflow will be set to testWorkflowName due to our WithGitHubContextSimple implementation
 		agentCreated := createAgentWithOptions(ctx, t, client,
-			WithGitHubContextSimple("owner", "repo", repoID, "", "", ""), // With repo ID, no workflow
+			WithGitHubContextSimple("owner", "repo", repoID, "", "", ""), // With repo ID
 		)
 
 		// Check network policy is included in agent creation response
 		assert.NotNil(t, agentCreated.NetworkPolicy, "NetworkPolicy should be included in response")
 
-		// Should inherit from repo policy (override global)
-		assert.Equal(t, types.NetworkPolicyCIDRModeIPv4, agentCreated.NetworkPolicy.Config.CIDRMode)
-		assert.Equal(t, types.NetworkPolicyTypeDeny, agentCreated.NetworkPolicy.Config.CIDRPolicy)
-		assert.Equal(t, types.NetworkPolicyResolveModsBypass, agentCreated.NetworkPolicy.Config.ResolveMode)
+		// Should inherit from workflow policy (which has highest precedence)
+		assert.Equal(t, types.NetworkPolicyCIDRModeIPv6, agentCreated.NetworkPolicy.Config.CIDRMode)
+		assert.Equal(t, types.NetworkPolicyTypeAllow, agentCreated.NetworkPolicy.Config.CIDRPolicy)
+		assert.Equal(t, types.NetworkPolicyResolveModePermissive, agentCreated.NetworkPolicy.Config.ResolveMode)
 
-		// Should have global + repo rules
-		assert.Len(t, agentCreated.NetworkPolicy.Rules, 2)
+		// Should have global + repo + workflow rules (all three)
+		assert.Len(t, agentCreated.NetworkPolicy.Rules, 3)
 
-		// Should include policy references
+		// Should include policy references for all three levels
 		assert.NotNil(t, agentCreated.NetworkPolicy.GlobalPolicy)
 		assert.NotNil(t, agentCreated.NetworkPolicy.RepoPolicy)
 		assert.Equal(t, repoID, agentCreated.NetworkPolicy.RepoPolicy.RepositoryID)
-		assert.Nil(t, agentCreated.NetworkPolicy.WorkflowPolicy)
+		assert.NotNil(t, agentCreated.NetworkPolicy.WorkflowPolicy)
 
 		// Verify the agent model includes the network policy when retrieved directly
 		agent, err := client.Agent(ctx, agentCreated.ID)
@@ -326,7 +327,8 @@ func TestAgentNetworkPolicyRetrieval(t *testing.T) {
 // TestAgentNetworkPolicyFallback tests that agents receive default policies when no policies exist.
 func TestAgentNetworkPolicyFallback(t *testing.T) {
 	ctx := t.Context()
-	client := testclient.WithToken(t)
+	// Create a project and get a client with a project token
+	_, client := testclient.WithProjectTokenForTest(t)
 
 	// Clean up existing policies first
 	cleanupNetworkPolicies(ctx, t, client)
@@ -337,11 +339,13 @@ func TestAgentNetworkPolicyFallback(t *testing.T) {
 
 	t.Run("agent_with_no_policies", func(t *testing.T) {
 		// Create a GitHub agent with contexts that have no policies
+		// Note: The service will automatically create repo and workflow policies
+		// when an agent is created with a GitHub context (HandleGitHubContextCreated)
 		agentCreated := createAgentWithOptions(ctx, t, client,
 			WithGitHubContextSimple("owner", "repo", repoID, workflowName, "12345", "1"),
 		)
 
-		// Should still receive a network policy with default values
+		// Should receive a network policy with default values
 		assert.NotNil(t, agentCreated.NetworkPolicy, "NetworkPolicy should be included in response")
 
 		// Should have default config values
@@ -350,12 +354,12 @@ func TestAgentNetworkPolicyFallback(t *testing.T) {
 		assert.Equal(t, types.NetworkPolicyResolveModsBypass, agentCreated.NetworkPolicy.Config.ResolveMode)
 		assert.Equal(t, types.NetworkPolicyTypeAllow, agentCreated.NetworkPolicy.Config.ResolvePolicy)
 
-		// Should have no rules
+		// Should have no rules (policies are created but with no rules by default)
 		assert.Empty(t, agentCreated.NetworkPolicy.Rules)
 
-		// Should have no policy references
+		// Should have repo and workflow policy references (created automatically by HandleGitHubContextCreated)
 		assert.Nil(t, agentCreated.NetworkPolicy.GlobalPolicy)
-		assert.Nil(t, agentCreated.NetworkPolicy.RepoPolicy)
-		assert.Nil(t, agentCreated.NetworkPolicy.WorkflowPolicy)
+		assert.NotNil(t, agentCreated.NetworkPolicy.RepoPolicy)
+		assert.NotNil(t, agentCreated.NetworkPolicy.WorkflowPolicy)
 	})
 }

@@ -2,14 +2,18 @@ package client_test
 
 import (
 	"context"
+	"os"
+	"path/filepath"
+	"sort"
 	"testing"
 
 	"github.com/google/uuid"
-	"github.com/listendev/jibril-server/client"
-	"github.com/listendev/jibril-server/client/testclient"
-	"github.com/listendev/jibril-server/types"
+	"github.com/listendev/jibril-api/client"
+	"github.com/listendev/jibril-api/client/testclient"
+	"github.com/listendev/jibril-api/types"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"gopkg.in/yaml.v3"
 )
 
 // NetworkPolicyOption represents a function that modifies a CreateNetworkPolicy request.
@@ -597,13 +601,32 @@ func TestRepoNetworkPolicy(t *testing.T) {
 	})
 }
 
+// Using the testWorkflowName constant defined in agent_network_policy_test.go
+
+// loadGoldenPolicy loads a golden policy file from the testdata directory.
+func loadGoldenPolicy(t *testing.T, filename string) map[string]interface{} {
+	t.Helper()
+
+	// Read the golden file
+	filepath := filepath.Join("testdata", "policies", filename)
+	data, err := os.ReadFile(filepath)
+	require.NoError(t, err, "Failed to read golden policy file: %s", filepath)
+
+	// Parse the YAML into a map
+	var policy map[string]interface{}
+	err = yaml.Unmarshal(data, &policy)
+	require.NoError(t, err, "Failed to parse golden policy file: %s", filepath)
+
+	return policy
+}
+
 // TestWorkflowNetworkPolicy tests workflow-level network policy operations.
 func TestWorkflowNetworkPolicy(t *testing.T) {
 	ctx := t.Context()
 	client := testclient.WithToken(t)
-	repoID := uuid.New().String()  // Simulate a repository ID
-	workflowName := "ci.yml"       // Simulate a workflow name
-	workflowName2 := "release.yml" // Another workflow name for testing
+	repoID := uuid.New().String()    // Simulate a repository ID
+	workflowName := testWorkflowName // Simulate a workflow name
+	workflowName2 := "release.yml"   // Another workflow name for testing
 
 	// Clean up existing policies first
 	cleanupNetworkPolicies(ctx, t, client)
@@ -694,8 +717,8 @@ func TestWorkflowNetworkPolicy(t *testing.T) {
 func TestNetworkPolicyHierarchy(t *testing.T) {
 	ctx := t.Context()
 	client := testclient.WithToken(t)
-	repoID := uuid.New().String() // Simulate a repository ID
-	workflowName := "ci.yml"      // Simulate a workflow name
+	repoID := uuid.New().String()    // Simulate a repository ID
+	workflowName := testWorkflowName // Simulate a workflow name
 
 	// Clean up existing policies first
 	cleanupNetworkPolicies(ctx, t, client)
@@ -915,6 +938,8 @@ func TestNetworkPolicyHierarchy(t *testing.T) {
 	})
 }
 
+// TestNetworkPolicyListPagination tests pagination for network policy list endpoint.
+
 // TestMergedGlobalNetworkPolicy tests retrieving the merged network policy.
 func TestMergedGlobalNetworkPolicy(t *testing.T) {
 	ctx := t.Context()
@@ -1005,4 +1030,261 @@ func TestMergedGlobalNetworkPolicy(t *testing.T) {
 		assert.Nil(t, merged.RepoPolicy)
 		assert.Nil(t, merged.WorkflowPolicy)
 	})
+}
+
+// TestApiJibrilFormatGolden tests that the API returns policies that match the golden files.
+// This test specifically ensures order-insensitive comparison of rules.
+func TestApiJibrilFormatGolden(t *testing.T) { //nolint:gocognit
+	ctx := t.Context()
+	client := testclient.WithToken(t)
+
+	// Clean up existing policies first
+	cleanupNetworkPolicies(ctx, t, client)
+
+	// Test cases for different policy levels
+	tests := []struct {
+		name         string
+		goldenFile   string
+		createPolicy func(t *testing.T) (string, string, string) // returns policyID, repoID, workflowName
+	}{
+		{
+			name:       "global_policy",
+			goldenFile: "global_policy.yaml",
+			createPolicy: func(t *testing.T) (string, string, string) {
+				t.Helper()
+				// Create a global policy that should match global_policy.yaml
+				policyID := setupNetworkPolicy(ctx, t, client,
+					WithNetworkPolicyScope(types.NetworkPolicyScopeGlobal),
+					WithNetworkPolicyConfig(types.NetworkPolicyConfig{
+						CIDRMode:      types.NetworkPolicyCIDRModeBoth,
+						CIDRPolicy:    types.NetworkPolicyTypeDeny,
+						ResolveMode:   types.NetworkPolicyResolveModeStrict, // Will be mapped to "enforce"
+						ResolvePolicy: types.NetworkPolicyTypeDeny,
+					}),
+					WithNetworkPolicyRules(
+						types.CreateNetworkPolicyRule{
+							Type:   types.NetworkPolicyRuleTypeCIDR,
+							Value:  "10.0.0.0/8",
+							Action: types.NetworkPolicyTypeAllow,
+						},
+						types.CreateNetworkPolicyRule{
+							Type:   types.NetworkPolicyRuleTypeDomain,
+							Value:  "example.com",
+							Action: types.NetworkPolicyTypeAllow,
+						},
+					),
+				)
+				return policyID, "", "" // No repo or workflow for global policy
+			},
+		},
+		{
+			name:       "repo_policy",
+			goldenFile: "repo_policy.yaml",
+			createPolicy: func(t *testing.T) (string, string, string) {
+				t.Helper()
+				// Create repo policy that should match repo_policy.yaml
+				repoID := uuid.New().String()
+				policyID := setupNetworkPolicy(ctx, t, client,
+					WithNetworkPolicyScope(types.NetworkPolicyScopeRepo),
+					WithNetworkPolicyRepositoryID(repoID),
+					WithNetworkPolicyConfig(types.NetworkPolicyConfig{
+						CIDRMode:      types.NetworkPolicyCIDRModeIPv4, // Will be mapped to "alert" in Jibril format
+						CIDRPolicy:    types.NetworkPolicyTypeAllow,
+						ResolveMode:   types.NetworkPolicyResolveModsBypass,
+						ResolvePolicy: types.NetworkPolicyTypeAllow,
+					}),
+					WithNetworkPolicyRules(
+						types.CreateNetworkPolicyRule{
+							Type:   types.NetworkPolicyRuleTypeCIDR,
+							Value:  "10.0.0.0/8",
+							Action: types.NetworkPolicyTypeAllow,
+						},
+						types.CreateNetworkPolicyRule{
+							Type:   types.NetworkPolicyRuleTypeDomain,
+							Value:  "example.com",
+							Action: types.NetworkPolicyTypeAllow,
+						},
+						types.CreateNetworkPolicyRule{
+							Type:   types.NetworkPolicyRuleTypeCIDR,
+							Value:  "192.168.0.0/16",
+							Action: types.NetworkPolicyTypeAllow,
+						},
+						types.CreateNetworkPolicyRule{
+							Type:   types.NetworkPolicyRuleTypeDomain,
+							Value:  "github.com",
+							Action: types.NetworkPolicyTypeDeny,
+						},
+					),
+				)
+				return policyID, repoID, ""
+			},
+		},
+		{
+			name:       "workflow_policy",
+			goldenFile: "workflow_policy.yaml",
+			createPolicy: func(t *testing.T) (string, string, string) {
+				t.Helper()
+				// Create workflow policy that should match workflow_policy.yaml
+				repoID := uuid.New().String()
+				workflowName := "ci.yml"
+
+				// Create a global policy first with some rules
+				_ = setupNetworkPolicy(ctx, t, client,
+					WithNetworkPolicyScope(types.NetworkPolicyScopeGlobal),
+					WithNetworkPolicyConfig(types.NetworkPolicyConfig{
+						CIDRMode:      types.NetworkPolicyCIDRModeBoth,
+						CIDRPolicy:    types.NetworkPolicyTypeDeny,
+						ResolveMode:   types.NetworkPolicyResolveModeStrict,
+						ResolvePolicy: types.NetworkPolicyTypeDeny,
+					}),
+					WithNetworkPolicyRules(
+						types.CreateNetworkPolicyRule{
+							Type:   types.NetworkPolicyRuleTypeCIDR,
+							Value:  "10.0.0.0/8",
+							Action: types.NetworkPolicyTypeAllow,
+						},
+						types.CreateNetworkPolicyRule{
+							Type:   types.NetworkPolicyRuleTypeDomain,
+							Value:  "example.com",
+							Action: types.NetworkPolicyTypeAllow,
+						},
+					),
+				)
+
+				// Create repo policy with additional rules
+				_ = setupNetworkPolicy(ctx, t, client,
+					WithNetworkPolicyScope(types.NetworkPolicyScopeRepo),
+					WithNetworkPolicyRepositoryID(repoID),
+					WithNetworkPolicyConfig(types.NetworkPolicyConfig{
+						CIDRMode:      types.NetworkPolicyCIDRModeIPv4,
+						CIDRPolicy:    types.NetworkPolicyTypeAllow,
+						ResolveMode:   types.NetworkPolicyResolveModsBypass,
+						ResolvePolicy: types.NetworkPolicyTypeAllow,
+					}),
+					WithNetworkPolicyRules(
+						types.CreateNetworkPolicyRule{
+							Type:   types.NetworkPolicyRuleTypeCIDR,
+							Value:  "192.168.0.0/16",
+							Action: types.NetworkPolicyTypeAllow,
+						},
+						types.CreateNetworkPolicyRule{
+							Type:   types.NetworkPolicyRuleTypeDomain,
+							Value:  "github.com",
+							Action: types.NetworkPolicyTypeDeny,
+						},
+					),
+				)
+
+				// Create workflow policy with additional rules
+				policyID := setupNetworkPolicy(ctx, t, client,
+					WithNetworkPolicyScope(types.NetworkPolicyScopeWorkflow),
+					WithNetworkPolicyRepositoryID(repoID),
+					WithNetworkPolicyWorkflowName(workflowName),
+					WithNetworkPolicyConfig(types.NetworkPolicyConfig{
+						CIDRMode:      types.NetworkPolicyCIDRModeIPv6, // Will be mapped to "enforce" in Jibril format
+						CIDRPolicy:    types.NetworkPolicyTypeDeny,
+						ResolveMode:   types.NetworkPolicyResolveModePermissive, // Will be mapped to "alert" in Jibril format
+						ResolvePolicy: types.NetworkPolicyTypeDeny,
+					}),
+					WithNetworkPolicyRules(
+						types.CreateNetworkPolicyRule{
+							Type:   types.NetworkPolicyRuleTypeCIDR,
+							Value:  "2001:db8::/32",
+							Action: types.NetworkPolicyTypeAllow,
+						},
+						types.CreateNetworkPolicyRule{
+							Type:   types.NetworkPolicyRuleTypeDomain,
+							Value:  "npm.js",
+							Action: types.NetworkPolicyTypeAllow,
+						},
+					),
+				)
+
+				return policyID, repoID, workflowName
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			// Setup the policy and get IDs
+			policyID, repoID, workflowName := tt.createPolicy(t)
+
+			// Make sure policy gets cleaned up after test
+			defer func() {
+				err := client.DeleteNetworkPolicy(ctx, policyID)
+				require.NoError(t, err, "Failed to clean up test policy")
+			}()
+
+			// Get the policy in Jibril format
+			jibrilFormat, err := client.MergedNetworkPolicyJibrilFormat(ctx, repoID, workflowName)
+			require.NoError(t, err, "Failed to get policy in Jibril format")
+
+			// Load the golden file
+			goldenPolicy := loadGoldenPolicy(t, tt.goldenFile)
+
+			// Convert to YAML format for consistent comparison
+			yamlResult, err := yaml.Marshal(jibrilFormat)
+			require.NoError(t, err, "Failed to marshal result to YAML")
+
+			yamlGolden, err := yaml.Marshal(goldenPolicy)
+			require.NoError(t, err, "Failed to marshal golden policy to YAML")
+
+			// Parse back for structured comparison
+			result := make(map[string]interface{})
+			golden := make(map[string]interface{})
+
+			err = yaml.Unmarshal(yamlResult, &result)
+			require.NoError(t, err, "Failed to unmarshal result YAML")
+
+			err = yaml.Unmarshal(yamlGolden, &golden)
+			require.NoError(t, err, "Failed to unmarshal golden YAML")
+
+			// Sort the rules for order-insensitive comparison
+			sortRules := func(policy map[string]interface{}) {
+				if np, ok := policy["network_policy"].(map[string]interface{}); ok {
+					if rules, ok := np["rules"].([]interface{}); ok {
+						// Sort the rules by type and value to ensure consistent ordering
+						sort.Slice(rules, func(i, j int) bool {
+							ruleI, okI := rules[i].(map[string]interface{})
+							if !okI {
+								return false
+							}
+
+							ruleJ, okJ := rules[j].(map[string]interface{})
+							if !okJ {
+								return false
+							}
+
+							// First check if it's a CIDR rule
+							if cidrI, okI := ruleI["cidr"].(string); okI {
+								if cidrJ, okJ := ruleJ["cidr"].(string); okJ {
+									return cidrI < cidrJ
+								}
+								return true // CIDRs come before domains
+							}
+
+							// Then it must be a domain rule
+							if domainI, okI := ruleI["domain"].(string); okI {
+								if domainJ, okJ := ruleJ["domain"].(string); okJ {
+									return domainI < domainJ
+								}
+								return false // Domains come after CIDRs
+							}
+
+							return false
+						})
+						np["rules"] = rules
+					}
+				}
+			}
+
+			// Sort rules in both result and golden
+			sortRules(result)
+			sortRules(golden)
+
+			// Compare the two structures
+			assert.Equal(t, golden, result, "API policy in Jibril format should match golden file %s", tt.goldenFile)
+		})
+	}
 }

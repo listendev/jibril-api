@@ -4,7 +4,7 @@ package types
 import (
 	"time"
 
-	"github.com/listendev/jibril-server/types/errs"
+	"github.com/listendev/jibril-api/types/errs"
 )
 
 const (
@@ -149,6 +149,18 @@ func (k EventKind) OK() bool {
 	return false
 }
 
+func (e *CreateOrUpdateEvent) Validate() error {
+	if e.ID == "" {
+		return ErrIDcannotBeEmpty
+	}
+
+	if !e.Kind.OK() {
+		return ErrInvalidEventKind
+	}
+
+	return nil
+}
+
 func (e *Event) Validate() error {
 	if e.ID == "" {
 		return ErrIDcannotBeEmpty
@@ -161,11 +173,22 @@ func (e *Event) Validate() error {
 	return nil
 }
 
+// CreateOrUpdateEvent is used for creating or updating events.
+// It includes the agent ID but doesn't return the full agent details.
+type CreateOrUpdateEvent struct {
+	ID        string    `json:"id"`
+	AgentID   string    `json:"-"` // Internal field, not exposed in JSON
+	Data      EventData `json:"data"`
+	Kind      EventKind `json:"kind"`
+	CreatedAt time.Time `json:"createdAt"`
+	UpdatedAt time.Time `json:"updatedAt"`
+}
+
 // Event is something that happened in the system.
-// Can be of different types but more or less every events has same properties.
+// This is used for retrieving events and includes the full agent details.
 type Event struct {
 	ID        string    `json:"id"`
-	AgentID   string    `json:"agent_id"`
+	Agent     Agent     `json:"agent"`
 	Data      EventData `json:"data"`
 	Kind      EventKind `json:"kind"`
 	CreatedAt time.Time `json:"createdAt"`
@@ -276,14 +299,9 @@ type Process struct {
 	UID        *int    `json:"uid,omitempty"`
 }
 
-// IngestEventResult is the result of the IngestEvent method of the service.
-type IngestEventResult struct {
-	ID      string `json:"id"`
-	Created bool   `json:"created"`
-	Updated bool   `json:"updated"`
-}
-
-// IngestedEvent is the API response for the IngestEvent method.
-type IngestedEvent struct {
-	ID string `json:"id"`
+// EventCreatedOrUpdated represents the response when an event is successfully created or updated.
+type EventCreatedOrUpdated struct {
+	ID        string    `json:"id"`
+	Created   bool      `json:"created"`
+	UpdatedAt time.Time `json:"updated_at"`
 }

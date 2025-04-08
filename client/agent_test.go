@@ -2,14 +2,17 @@ package client_test
 
 import (
 	"context"
+	"fmt"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/ghetzel/testify/require"
 	"github.com/google/uuid"
-	"github.com/listendev/jibril-server/client"
-	"github.com/listendev/jibril-server/client/testclient"
-	"github.com/listendev/jibril-server/types"
+	"github.com/listendev/jibril-api/client"
+	"github.com/listendev/jibril-api/client/testclient"
+	"github.com/listendev/jibril-api/types"
+	"github.com/stretchr/testify/assert"
 )
 
 // AgentOption represents a function that modifies a CreateAgent request.
@@ -89,13 +92,13 @@ func WithAgentKind(kind types.AgentKind) AgentOption {
 func setupAgent(ctx context.Context, t *testing.T, client *client.Client, opts ...AgentOption) (types.AgentCreated, *types.GitHubContext) {
 	t.Helper()
 
-	// Create default GitHub context
+	// Create default GitHub context with all required fields
 	githubContext := &types.GitHubContext{
 		Action:            "test-action",
 		Actor:             "test-user",
 		ActorID:           "12345",
 		EventName:         "pull_request",
-		Job:               "run",
+		Job:               "run", // Required field
 		Ref:               "refs/pull/123/merge",
 		RefName:           "123/merge",
 		RefProtected:      false,
@@ -105,14 +108,14 @@ func setupAgent(ctx context.Context, t *testing.T, client *client.Client, opts .
 		RepositoryOwner:   "listendev",
 		RepositoryOwnerID: "87654321",
 		RunAttempt:        "1",
-		RunID:             "12345678901",
+		RunID:             "12345678901", // Required field
 		RunNumber:         "100",
 		RunnerArch:        "X64",
 		RunnerOS:          "Linux",
 		ServerURL:         "https://github.com",
 		SHA:               "0123456789abcdef0123456789abcdef01234567",
 		TriggeringActor:   "test-user",
-		Workflow:          "Test Workflow",
+		Workflow:          "Test Workflow", // Required field
 		WorkflowRef:       "listendev/jibril/.github/workflows/test.yaml@refs/pull/123/merge",
 		WorkflowSHA:       "0123456789abcdef0123456789abcdef01234567",
 		Workspace:         "/home/runner/work/jibril/jibril",
@@ -165,7 +168,7 @@ func TestAgentCreate(t *testing.T) {
 			MachineID:     "1234",
 			Labels:        types.AgentLabels{},
 			Kind:          "invalid", // Invalid kind forces error
-			GithubContext: &types.GitHubContext{},
+			GithubContext: &types.GitHubContext{Job: "test-job", RunID: "12345", Workflow: "test-workflow"},
 		})
 		require.Error(t, err)
 	})
@@ -201,6 +204,49 @@ func TestAgentCreate(t *testing.T) {
 		require.Equal(t, "2.0.0", agent.Version)
 		require.Equal(t, "testing", agent.Labels["env"])
 		require.Equal(t, "us-west", agent.Labels["region"])
+	})
+
+	var vanillaID string
+	t.Run("vanilla agent", func(t *testing.T) {
+		created, err := client.CreateAgent(ctx, types.CreateAgent{
+			ProjectID: "1234",
+			OS:        "linux",
+			Arch:      "amd64",
+			Hostname:  "jenkins",
+			Version:   "1.0.0",
+			IP:        "192.168.0.1",
+			MachineID: "1234",
+			Labels:    types.AgentLabels{},
+			Kind:      "vanilla",
+			VanillaContext: &types.AgentVanillaContext{
+				Job:       "test-job",
+				RunnerOS:  "linux",
+				CreatedAt: time.Now(),
+				UpdatedAt: time.Now(),
+			},
+		})
+
+		require.NoError(t, err, "Failed to create vanilla agent")
+
+		vanillaID = created.ID
+	})
+
+	t.Run("get vanilla agent", func(t *testing.T) {
+		agent, err := client.Agent(ctx, vanillaID)
+		require.NoError(t, err, "Failed to get vanilla agent")
+		require.Equal(t, "vanilla", agent.Kind.String())
+	})
+
+	t.Run("vanilla agent update", func(t *testing.T) {
+		err := client.UpdateAgent(ctx, vanillaID, types.UpdateAgent{
+			MachineID: ptr("updated-machine-id"),
+		})
+		require.NoError(t, err, "Failed to update vanilla agent")
+
+		// Verify update was applied
+		agent, err := client.Agent(ctx, vanillaID)
+		require.NoError(t, err)
+		require.Equal(t, "updated-machine-id", agent.MachineID)
 	})
 }
 
@@ -318,6 +364,14 @@ func TestAgentDelete(t *testing.T) {
 	})
 }
 
+// Test label constants.
+const (
+	labelKeyValue1 = "value1"
+	labelKeyValue2 = "value2"
+	labelKey1      = "key1"
+	labelKey2      = "key2"
+)
+
 func TestAgentList(t *testing.T) {
 	ctx := t.Context()
 	client := testclient.WithToken(t)
@@ -326,13 +380,13 @@ func TestAgentList(t *testing.T) {
 	setupAgent(ctx, t, client,
 		WithOS("debian"),
 		WithIP("192.168.0.1"),
-		WithLabels(types.AgentLabels{"key2": "value2"}),
+		WithLabels(types.AgentLabels{labelKey2: labelKeyValue2}),
 	)
 
 	setupAgent(ctx, t, client,
 		WithOS("ubuntu"),
 		WithIP("192.168.0.2"),
-		WithLabels(types.AgentLabels{"key1": "value1"}),
+		WithLabels(types.AgentLabels{labelKey1: labelKeyValue1}),
 	)
 
 	t.Run("no filters", func(t *testing.T) {
@@ -371,16 +425,304 @@ func TestAgentList(t *testing.T) {
 	t.Run("filter by labels", func(t *testing.T) {
 		resp, err := client.Agents(ctx, types.ListAgents{
 			Labels: types.AgentLabels{
-				"key1": "value1",
+				labelKey1: labelKeyValue1,
 			},
 		})
 		require.NoError(t, err)
 		require.GreaterOrEqual(t, len(resp.Items), 1)
 		for _, agent := range resp.Items {
-			if agent.Labels["key1"] == "value1" {
+			if agent.Labels[labelKey1] == labelKeyValue1 {
 				return // Success
 			}
 		}
-		t.Fatalf("Expected to find at least one agent with label key1=value1")
+		t.Fatalf("Expected to find at least one agent with label %s=%s", labelKey1, labelKeyValue1)
 	})
+}
+
+// TestAgentLabelsValidation tests the validation of agent labels.
+// It checks various validation cases including valid labels, invalid formats,.
+// length limits, and filtering operations.
+func TestAgentLabelsValidation(t *testing.T) {
+	ctx := t.Context()
+	client := testclient.WithToken(t)
+
+	// Create valid agent with valid labels
+	t.Run("valid labels", func(t *testing.T) {
+		validLabels := types.AgentLabels{
+			"app":         "api",
+			"environment": "production",
+			"version":     "1.2.3",
+			"tier":        "frontend",
+			"region":      "us-west-2",
+		}
+
+		agentCreated, _ := setupAgent(ctx, t, client, WithLabels(validLabels))
+
+		// Verify the agent was created and labels were saved
+		agent, err := client.Agent(ctx, agentCreated.ID)
+		require.NoError(t, err)
+		assert.Equal(t, "api", agent.Labels["app"])
+		assert.Equal(t, "production", agent.Labels["environment"])
+		assert.Equal(t, "1.2.3", agent.Labels["version"])
+		assert.Equal(t, "frontend", agent.Labels["tier"])
+		assert.Equal(t, "us-west-2", agent.Labels["region"])
+	})
+
+	// Test invalid label key format
+	t.Run("invalid label key format", func(t *testing.T) {
+		invalidLabels := types.AgentLabels{
+			"-invalid-key": "value", // Key starts with dash
+		}
+
+		_, err := client.CreateAgent(ctx, types.CreateAgent{
+			OS:        "linux",
+			Arch:      "amd64",
+			Hostname:  "test-host",
+			Version:   "1.0.0",
+			IP:        "192.168.1.1", // Add required IP field
+			MachineID: "test-machine-id",
+			Labels:    invalidLabels,
+			Kind:      types.AgentKindGithub,
+			GithubContext: &types.GitHubContext{
+				Job:      "test-job",
+				RunID:    "12345",
+				Workflow: "test-workflow",
+			},
+		})
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "invalid label key format")
+	})
+
+	// Test invalid label value format
+	t.Run("invalid label value format", func(t *testing.T) {
+		invalidLabels := types.AgentLabels{
+			"valid-key": "invalid@value", // Value contains @ which is not allowed
+		}
+
+		_, err := client.CreateAgent(ctx, types.CreateAgent{
+			OS:        "linux",
+			Arch:      "amd64",
+			Hostname:  "test-host",
+			Version:   "1.0.0",
+			IP:        "192.168.1.2", // Add required IP field
+			MachineID: "test-machine-id",
+			Labels:    invalidLabels,
+			Kind:      types.AgentKindGithub,
+			GithubContext: &types.GitHubContext{
+				Job:      "test-job",
+				RunID:    "12345",
+				Workflow: "test-workflow",
+			},
+		})
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "invalid label value format")
+	})
+
+	// Test label key too long
+	t.Run("label key too long", func(t *testing.T) {
+		longKey := ""
+		for i := 0; i < types.MaxLabelKeyLength+1; i++ { //nolint:intrange
+			longKey += "a"
+		}
+
+		invalidLabels := types.AgentLabels{
+			longKey: "value",
+		}
+
+		_, err := client.CreateAgent(ctx, types.CreateAgent{
+			OS:        "linux",
+			Arch:      "amd64",
+			Hostname:  "test-host",
+			Version:   "1.0.0",
+			IP:        "192.168.1.3", // Add required IP field
+			MachineID: "test-machine-id",
+			Labels:    invalidLabels,
+			Kind:      types.AgentKindGithub,
+			GithubContext: &types.GitHubContext{
+				Job:      "test-job",
+				RunID:    "12345",
+				Workflow: "test-workflow",
+			},
+		})
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "label key exceeds maximum length")
+	})
+
+	// Test label value too long
+	t.Run("label value too long", func(t *testing.T) {
+		longValue := ""
+		for i := 0; i < types.MaxLabelValueLength+1; i++ { //nolint:intrange
+			longValue += "a"
+		}
+
+		invalidLabels := types.AgentLabels{
+			"key": longValue,
+		}
+
+		_, err := client.CreateAgent(ctx, types.CreateAgent{
+			OS:        "linux",
+			Arch:      "amd64",
+			Hostname:  "test-host",
+			Version:   "1.0.0",
+			IP:        "192.168.1.4", // Add required IP field
+			MachineID: "test-machine-id",
+			Labels:    invalidLabels,
+			Kind:      types.AgentKindGithub,
+			GithubContext: &types.GitHubContext{
+				Job:      "test-job",
+				RunID:    "12345",
+				Workflow: "test-workflow",
+			},
+		})
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "label value exceeds maximum length")
+	})
+
+	// Test too many labels
+	t.Run("too many labels", func(t *testing.T) {
+		tooManyLabels := make(types.AgentLabels)
+		for i := range types.MaxLabelsCount + 1 {
+			tooManyLabels[fmt.Sprintf("label%d", i)] = "value"
+		}
+
+		_, err := client.CreateAgent(ctx, types.CreateAgent{
+			OS:        "linux",
+			Arch:      "amd64",
+			Hostname:  "test-host",
+			Version:   "1.0.0",
+			IP:        "192.168.1.5", // Add required IP field
+			MachineID: "test-machine-id",
+			Labels:    tooManyLabels,
+			Kind:      types.AgentKindGithub,
+			GithubContext: &types.GitHubContext{
+				Job:      "test-job",
+				RunID:    "12345",
+				Workflow: "test-workflow",
+			},
+		})
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "too many labels")
+	})
+
+	// Agent update doesn't support updating labels
+
+	// Test listing agents by label filters
+	t.Run("list agents by label", func(t *testing.T) {
+		// Create agents with different labels
+		setupAgent(ctx, t, client,
+			WithLabels(types.AgentLabels{"filter-test": "value1", "common": "shared"}),
+		)
+
+		setupAgent(ctx, t, client,
+			WithLabels(types.AgentLabels{"filter-test": "value2", "common": "shared"}),
+		)
+
+		// Filter by exact match
+		resp1, err := client.Agents(ctx, types.ListAgents{
+			Labels: types.AgentLabels{
+				"filter-test": "value1",
+			},
+		})
+		require.NoError(t, err)
+		require.GreaterOrEqual(t, len(resp1.Items), 1)
+
+		// Verify filter worked
+		for _, agent := range resp1.Items {
+			if val, ok := agent.Labels["filter-test"]; ok {
+				assert.Equal(t, "value1", val)
+			}
+		}
+
+		// Filter by another label
+		resp2, err := client.Agents(ctx, types.ListAgents{
+			Labels: types.AgentLabels{
+				"common": "shared",
+			},
+		})
+		require.NoError(t, err)
+		require.GreaterOrEqual(t, len(resp2.Items), 2)
+
+		// Verify both agents with common label are included
+		var foundValue1, foundValue2 bool
+		for _, agent := range resp2.Items {
+			if val, ok := agent.Labels["filter-test"]; ok {
+				if val == "value1" {
+					foundValue1 = true
+				}
+				if val == "value2" {
+					foundValue2 = true
+				}
+			}
+		}
+		assert.True(t, foundValue1, "Should find agent with filter-test=value1")
+		assert.True(t, foundValue2, "Should find agent with filter-test=value2")
+	})
+}
+
+func TestUpdateFromVanillaToGithub(t *testing.T) {
+	ctx := t.Context()
+	client := testclient.WithToken(t)
+
+	// create a vanilla agent
+	created, err := client.CreateAgent(ctx, types.CreateAgent{
+		ProjectID: "1234",
+		OS:        "linux",
+		Arch:      "amd64",
+		Hostname:  "jenkins",
+		Version:   "1.0.0",
+		IP:        "192.168.0.1",
+		MachineID: "1234",
+		Labels:    types.AgentLabels{},
+		Kind:      "vanilla",
+		VanillaContext: &types.AgentVanillaContext{
+			Job:       "test-job",
+			RunnerOS:  "linux",
+			CreatedAt: time.Now(),
+			UpdatedAt: time.Now(),
+		},
+	})
+
+	require.NoError(t, err, "Failed to create vanilla agent")
+
+	k := types.AgentKindGithub
+	// update saying we want to change it to github
+	err = client.UpdateAgent(ctx, created.ID, types.UpdateAgent{
+		Kind: &k,
+		GithubContext: &types.GitHubContext{
+			Action:            "test-action",
+			Actor:             "test-user",
+			ActorID:           "12345",
+			EventName:         "pull_request",
+			Job:               "run", // Required field
+			Ref:               "refs/pull/123/merge",
+			RefName:           "123/merge",
+			RefProtected:      false,
+			RefType:           "branch",
+			Repository:        "listendev/jibril",
+			RepositoryID:      "12345678",
+			RepositoryOwner:   "listendev",
+			RepositoryOwnerID: "87654321",
+			RunAttempt:        "1",
+			RunID:             "12345678901", // Required field
+			RunNumber:         "100",
+			RunnerArch:        "X64",
+			RunnerOS:          "Linux",
+			ServerURL:         "https://github.com",
+			SHA:               "0123456789abcdef0123456789abcdef01234567",
+			TriggeringActor:   "test-user",
+			Workflow:          "Test Workflow", // Required field
+			WorkflowRef:       "listendev/jibril/.github/workflows/test.yaml@refs/pull/123/merge",
+			WorkflowSHA:       "0123456789abcdef0123456789abcdef01234567",
+			Workspace:         "/home/runner/work/jibril/jibril",
+		},
+	})
+
+	require.NoError(t, err, "Failed to update agent to github")
+
+	// verify the agent was updated
+	agent, err := client.Agent(ctx, created.ID)
+	require.NoError(t, err, "Failed to get agent after update")
+
+	require.Equal(t, "github", agent.Kind.String(), "Expected agent kind to be github")
+	require.NotNil(t, agent.GithubContext, "Expected github context to be set")
 }

@@ -6,7 +6,7 @@ import (
 	"net/url"
 	"strconv"
 
-	"github.com/listendev/jibril-server/types"
+	"github.com/listendev/jibril-api/types"
 )
 
 // CreateIssue creates a new issue with the given params.
@@ -56,6 +56,16 @@ func (c *Client) Issues(ctx context.Context, params types.ListIssues) (types.Pag
 		if params.Filters.AgentKind != nil {
 			query.Set("filter.agent_kind", params.Filters.AgentKind.String())
 		}
+		// Add the new filter parameters for repository and workflow
+		if params.Filters.RepositoryID != nil {
+			query.Set("filter.repository_id", *params.Filters.RepositoryID)
+		}
+		if params.Filters.Repository != nil {
+			query.Set("filter.repository", *params.Filters.Repository)
+		}
+		if params.Filters.WorkflowName != nil {
+			query.Set("filter.workflow_name", *params.Filters.WorkflowName)
+		}
 	}
 
 	// Add label filters
@@ -89,4 +99,44 @@ func (c *Client) Issues(ctx context.Context, params types.ListIssues) (types.Pag
 	}
 
 	return out, c.do(ctx, &out, http.MethodGet, url, nil)
+}
+
+// AllowIssue performs an allow action on an issue with the specified scope.
+func (c *Client) AllowIssue(ctx context.Context, issueID string, action types.IssueAction) (types.IssueActionPerformed, error) {
+	var out types.IssueActionPerformed
+
+	// Force the action type to be "allow" regardless of what's provided
+	action.ActionType = types.IssueActionTypeAllow
+
+	return out, c.do(ctx, &out, http.MethodPost, "/api/v1/issues/"+issueID+"/actions/allow", action)
+}
+
+// BlockIssue performs a block action on an issue with the specified scope.
+func (c *Client) BlockIssue(ctx context.Context, issueID string, action types.IssueAction) (types.IssueActionPerformed, error) {
+	var out types.IssueActionPerformed
+
+	// Force the action type to be "block" regardless of what's provided
+	action.ActionType = types.IssueActionTypeBlock
+
+	return out, c.do(ctx, &out, http.MethodPost, "/api/v1/issues/"+issueID+"/actions/block", action)
+}
+
+// IssueActionHistory retrieves the history of actions performed on an issue.
+func (c *Client) IssueActionHistory(ctx context.Context, issueID string) ([]types.IssueActionHistory, error) {
+	var out []types.IssueActionHistory
+
+	url := "/api/v1/issues/" + issueID + "/actions"
+	err := c.do(ctx, &out, http.MethodGet, url, nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return out, nil
+}
+
+// IssueClasses retrieves all available and enabled issue classes.
+func (c *Client) IssueClasses(ctx context.Context) ([]types.IssueClass, error) {
+	var out []types.IssueClass
+
+	return out, c.do(ctx, &out, http.MethodGet, "/api/v1/issue_classes", nil)
 }

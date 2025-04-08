@@ -2,13 +2,14 @@ package client_test
 
 import (
 	"context"
+	"fmt"
 	"testing"
 
 	"github.com/ghetzel/testify/require"
 	"github.com/google/uuid"
-	"github.com/listendev/jibril-server/client"
-	"github.com/listendev/jibril-server/client/testclient"
-	"github.com/listendev/jibril-server/types"
+	"github.com/listendev/jibril-api/client"
+	"github.com/listendev/jibril-api/client/testclient"
+	"github.com/listendev/jibril-api/types"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -78,7 +79,7 @@ func setupEvent(ctx context.Context, t *testing.T, client *client.Client, agentC
 	// Create a new client with the agent token
 	agentClient := client.WithAgentToken(agentCreated.AgentToken)
 
-	event := types.Event{
+	event := types.CreateOrUpdateEvent{
 		ID:      uuid.New().String(),
 		AgentID: agentCreated.ID, // This will be validated/enforced by the server
 		Kind:    types.EventKindFlow,
@@ -301,7 +302,7 @@ func TestIssue(t *testing.T) {
 		assert.NotNil(t, issue.Events, "Events should not be nil")
 		assert.Len(t, issue.Events, 1, "Should have 1 event associated with the issue")
 		assert.Equal(t, eventID, issue.Events[0].ID, "Event ID should match the one used to create the issue")
-		assert.Equal(t, agentCreated.ID, issue.Events[0].AgentID, "Event agent ID should match")
+		assert.Equal(t, agentCreated.ID, issue.Events[0].Agent.ID, "Event agent ID should match")
 
 		// Check event data if needed
 		assert.NotNil(t, issue.Events[0].Data.Process, "Event process data should not be nil")
@@ -1035,49 +1036,12 @@ func TestIssues(t *testing.T) {
 				foundIssue = true
 				// Verify events are from GitHub agent
 				for _, event := range issue.Events {
-					agent, err := client.Agent(ctx, event.AgentID)
-					require.NoError(t, err)
-					assert.Equal(t, types.AgentKindGithub, agent.Kind)
+					// Agent info is already included in the event
+					assert.Equal(t, types.AgentKindGithub, event.Agent.Kind)
 				}
 			}
 		}
 		assert.True(t, foundIssue, "Expected to find GitHub issue")
-	})
-
-	t.Run("pagination", func(t *testing.T) {
-		setupTestIssues(t)
-
-		var firstPageSize uint = 2
-
-		// Request first page
-		firstPage, err := client.Issues(ctx, types.ListIssues{
-			PageArgs: types.PageArgs{
-				First: &firstPageSize,
-			},
-		})
-		require.NoError(t, err)
-		assert.Len(t, firstPage.Items, 2) // Using literal value instead of firstPageSize to avoid overflow warning
-		assert.NotNil(t, firstPage.PageInfo.EndCursor)
-		assert.True(t, firstPage.PageInfo.HasNextPage)
-
-		// Request second page
-		secondPage, err := client.Issues(ctx, types.ListIssues{
-			PageArgs: types.PageArgs{
-				First: &firstPageSize,
-				After: firstPage.PageInfo.EndCursor,
-			},
-		})
-		require.NoError(t, err)
-		assert.NotEmpty(t, secondPage.Items)
-
-		// Verify no duplicates between pages
-		firstPageIDs := make(map[string]bool)
-		for _, issue := range firstPage.Items {
-			firstPageIDs[issue.ID] = true
-		}
-		for _, issue := range secondPage.Items {
-			assert.False(t, firstPageIDs[issue.ID], "Found duplicate issue %s in second page", issue.ID)
-		}
 	})
 
 	t.Run("combined filters", func(t *testing.T) {
@@ -1137,9 +1101,8 @@ func TestIssues(t *testing.T) {
 					if tc.filters.Filters != nil && tc.filters.Filters.AgentKind != nil {
 						hasMatchingAgent := false
 						for _, event := range issue.Events {
-							agent, err := client.Agent(ctx, event.AgentID)
-							require.NoError(t, err)
-							if agent.Kind == *tc.filters.Filters.AgentKind {
+							// Agent info is already included in the event
+							if event.Agent.Kind == *tc.filters.Filters.AgentKind {
 								hasMatchingAgent = true
 								break
 							}
@@ -1200,12 +1163,48 @@ func TestIssues(t *testing.T) {
 				assert.NotEmpty(t, issue.Events)
 				for _, event := range issue.Events {
 					assert.NotEmpty(t, event.ID)
-					assert.NotEmpty(t, event.AgentID)
+					assert.NotEmpty(t, event.Agent.ID)
 					assert.NotNil(t, event.Data)
 					assert.NotZero(t, event.CreatedAt)
 					assert.NotZero(t, event.UpdatedAt)
 				}
 			}
+		}
+	})
+
+	t.Run("pagination", func(t *testing.T) {
+		setupTestIssues(t)
+
+		var firstPageSize uint = 2
+
+		// Request first page
+		firstPage, err := client.Issues(ctx, types.ListIssues{
+			PageArgs: types.PageArgs{
+				First: &firstPageSize,
+			},
+		})
+		require.NoError(t, err)
+		assert.Len(t, firstPage.Items, 2) // Using literal value instead of firstPageSize to avoid overflow warning
+		assert.NotNil(t, firstPage.PageInfo.EndCursor)
+		assert.True(t, firstPage.PageInfo.HasNextPage)
+
+		// Request second page
+		secondPage, err := client.Issues(ctx, types.ListIssues{
+			PageArgs: types.PageArgs{
+				First: &firstPageSize,
+				After: firstPage.PageInfo.EndCursor,
+			},
+		})
+		require.NoError(t, err)
+		assert.NotEmpty(t, secondPage.Items)
+
+		// Verify no duplicates between pages
+		firstPageIDs := make(map[string]bool)
+		for _, issue := range firstPage.Items {
+			firstPageIDs[issue.ID] = true
+		}
+		for _, issue := range secondPage.Items {
+			assert.False(t, firstPageIDs[issue.ID], "Found duplicate issue %s in second page", issue.ID)
 		}
 	})
 }
@@ -1218,4 +1217,245 @@ func contains(slice []string, str string) bool {
 		}
 	}
 	return false
+}
+
+// TestIssueLabelsValidation tests the validation of issue labels.
+// It checks various validation cases including valid labels, invalid formats,.
+// length limits, and updating operations.
+func TestIssueLabelsValidation(t *testing.T) {
+	ctx := t.Context()
+	client := testclient.WithToken(t)
+
+	// Create an agent to use for testing
+	agentCreated, _ := setupAgent(ctx, t, client)
+
+	// Create an event to associate with issues
+	eventID := setupEvent(ctx, t, client, agentCreated)
+
+	// Test valid issue with valid labels
+	t.Run("valid labels", func(t *testing.T) {
+		validLabels := types.IssueLabels{
+			"severity":    "high",
+			"component":   "api",
+			"version":     "1.2.3",
+			"priority":    "p1",
+			"environment": "production",
+		}
+
+		issueID := setupIssue(ctx, t, client, eventID,
+			WithIssueLabels(validLabels),
+		)
+
+		// Verify the issue was created and labels were saved
+		issue, err := client.Issue(ctx, issueID)
+		require.NoError(t, err)
+		assert.Equal(t, "high", issue.Labels["severity"])
+		assert.Equal(t, "api", issue.Labels["component"])
+		assert.Equal(t, "1.2.3", issue.Labels["version"])
+		assert.Equal(t, "p1", issue.Labels["priority"])
+		assert.Equal(t, "production", issue.Labels["environment"])
+	})
+
+	// Test invalid label key format
+	t.Run("invalid label key format", func(t *testing.T) {
+		invalidLabels := types.IssueLabels{
+			"-invalid-key": "value", // Key starts with dash
+		}
+
+		_, err := client.CreateIssue(ctx, types.CreateIssue{
+			Class:       types.IssueClassNetworkExfiltration,
+			Description: "Test description",
+			State:       types.IssueStateAllowed,
+			Priority:    types.IssuePriorityMedium,
+			Labels:      invalidLabels,
+			EventIDs:    []string{eventID},
+		})
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "invalid label key format")
+	})
+
+	// Test invalid label value format
+	t.Run("invalid label value format", func(t *testing.T) {
+		invalidLabels := types.IssueLabels{
+			"valid-key": "invalid@value", // Value contains @ which is not allowed
+		}
+
+		_, err := client.CreateIssue(ctx, types.CreateIssue{
+			Class:       types.IssueClassNetworkExfiltration,
+			Description: "Test description",
+			State:       types.IssueStateAllowed,
+			Priority:    types.IssuePriorityMedium,
+			Labels:      invalidLabels,
+			EventIDs:    []string{eventID},
+		})
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "invalid label value format")
+	})
+
+	// Test label key too long
+	t.Run("label key too long", func(t *testing.T) {
+		longKey := ""
+		for i := 0; i < types.MaxLabelKeyLength+1; i++ { //nolint:intrange
+			longKey += "a"
+		}
+
+		invalidLabels := types.IssueLabels{
+			longKey: "value",
+		}
+
+		_, err := client.CreateIssue(ctx, types.CreateIssue{
+			Class:       types.IssueClassNetworkExfiltration,
+			Description: "Test description",
+			State:       types.IssueStateAllowed,
+			Priority:    types.IssuePriorityMedium,
+			Labels:      invalidLabels,
+			EventIDs:    []string{eventID},
+		})
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "label key exceeds maximum length")
+	})
+
+	// Test label value too long
+	t.Run("label value too long", func(t *testing.T) {
+		longValue := ""
+		for i := 0; i < types.MaxLabelValueLength+1; i++ { //nolint:intrange
+			longValue += "a"
+		}
+
+		invalidLabels := types.IssueLabels{
+			"key": longValue,
+		}
+
+		_, err := client.CreateIssue(ctx, types.CreateIssue{
+			Class:       types.IssueClassNetworkExfiltration,
+			Description: "Test description",
+			State:       types.IssueStateAllowed,
+			Priority:    types.IssuePriorityMedium,
+			Labels:      invalidLabels,
+			EventIDs:    []string{eventID},
+		})
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "label value exceeds maximum length")
+	})
+
+	// Test too many labels
+	t.Run("too many labels", func(t *testing.T) {
+		tooManyLabels := make(types.IssueLabels)
+		for i := 0; i < types.MaxLabelsCount+1; i++ { //nolint:intrange
+			tooManyLabels[fmt.Sprintf("label%d", i)] = "value"
+		}
+
+		_, err := client.CreateIssue(ctx, types.CreateIssue{
+			Class:       types.IssueClassNetworkExfiltration,
+			Description: "Test description",
+			State:       types.IssueStateAllowed,
+			Priority:    types.IssuePriorityMedium,
+			Labels:      tooManyLabels,
+			EventIDs:    []string{eventID},
+		})
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "too many labels")
+	})
+
+	// Test updating issue with invalid labels
+	t.Run("update with invalid labels", func(t *testing.T) {
+		// First create an issue with valid labels
+		issueID := setupIssue(ctx, t, client, eventID,
+			WithIssueLabels(types.IssueLabels{"original": "value"}),
+		)
+
+		// Then try to update with invalid labels
+		invalidLabels := types.IssueLabels{
+			"invalid-label-": "value", // Key ends with dash
+		}
+
+		_, err := client.UpdateIssue(ctx, issueID, types.UpdateIssue{
+			Labels: &invalidLabels,
+		})
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "invalid label key format")
+
+		// Verify original labels are unchanged
+		issue, err := client.Issue(ctx, issueID)
+		require.NoError(t, err)
+		assert.Equal(t, "value", issue.Labels["original"])
+	})
+
+	// Test updating issue with valid labels
+	t.Run("update with valid labels", func(t *testing.T) {
+		// First create an issue with initial labels
+		issueID := setupIssue(ctx, t, client, eventID,
+			WithIssueLabels(types.IssueLabels{"initial": "value"}),
+		)
+
+		// Then update with new valid labels
+		newLabels := types.IssueLabels{
+			"updated":    "value",
+			"additional": "label",
+		}
+
+		_, err := client.UpdateIssue(ctx, issueID, types.UpdateIssue{
+			Labels: &newLabels,
+		})
+		require.NoError(t, err)
+
+		// Verify labels were updated
+		issue, err := client.Issue(ctx, issueID)
+		require.NoError(t, err)
+		assert.Equal(t, "value", issue.Labels["updated"])
+		assert.Equal(t, "label", issue.Labels["additional"])
+		assert.NotContains(t, issue.Labels, "initial") // Should be replaced
+	})
+
+	// Test searching issues by label filters
+	t.Run("list issues by label", func(t *testing.T) {
+		// Create issues with different labels
+		setupIssue(ctx, t, client, eventID,
+			WithIssueLabels(types.IssueLabels{"filter-test": "value1", "common": "shared"}),
+		)
+
+		setupIssue(ctx, t, client, eventID,
+			WithIssueLabels(types.IssueLabels{"filter-test": "value2", "common": "shared"}),
+		)
+
+		// Filter by exact match
+		resp1, err := client.Issues(ctx, types.ListIssues{
+			Labels: types.IssueLabels{
+				"filter-test": "value1",
+			},
+		})
+		require.NoError(t, err)
+		require.GreaterOrEqual(t, len(resp1.Items), 1)
+
+		// Verify filter worked
+		for _, issue := range resp1.Items {
+			if val, ok := issue.Labels["filter-test"]; ok {
+				assert.Equal(t, "value1", val)
+			}
+		}
+
+		// Filter by another label
+		resp2, err := client.Issues(ctx, types.ListIssues{
+			Labels: types.IssueLabels{
+				"common": "shared",
+			},
+		})
+		require.NoError(t, err)
+		require.GreaterOrEqual(t, len(resp2.Items), 2)
+
+		// Verify both issues with common label are included
+		var foundValue1, foundValue2 bool
+		for _, issue := range resp2.Items {
+			if val, ok := issue.Labels["filter-test"]; ok {
+				if val == "value1" {
+					foundValue1 = true
+				}
+				if val == "value2" {
+					foundValue2 = true
+				}
+			}
+		}
+		assert.True(t, foundValue1, "Should find issue with filter-test=value1")
+		assert.True(t, foundValue2, "Should find issue with filter-test=value2")
+	})
 }
