@@ -1,19 +1,593 @@
 openapi: 3.0.3
 info:
   title: Jibril API
-  description: API for managing events, issues, agents, and network policies associated with the Jibril agent.
+  description: |
+    API for managing events, issues, agents, and network policies associated with the Jibril agent.
+    
+    ## Authentication
+    
+    The API supports multiple authentication methods:
+    
+    - **User Authentication**: Using Google OAuth for secure user login
+    - **Project Token Authentication**: For programmatic access to project resources
+    - **Agent Token Authentication**: Limited to agent operations only
+    
+    ## Authorization System
+    
+    The API implements a Role-Based Access Control (RBAC) system with granular permissions:
+    - `create`: Allows creating new resources
+    - `read`: Allows reading/viewing existing resources  
+    - `update`: Allows modifying existing resources
+    - `delete`: Allows removing resources
+    - `list`: Allows listing multiple resources
+    
+    ## Authorization Errors
+
+    The API returns specific authorization error types based on the resource:
+
+    - Agent access: Returns `UnauthorizedAgent` error (401) when access to an agent is denied
+    - Issue access: Returns `UnauthorizedIssue` error (401) when access to an issue is denied
+    - Network Policy access: Returns `UnauthorizedNetworkPolicy` error (401) when access to a network policy is denied
+    - Event access: Returns `UnauthorizedEvents` error (401) when access to events is denied
+    - Token access: Returns `UnauthorizedTokenAccess` error (401) when access to tokens is denied
+    - Project Setting access: Returns `UnauthorizedProjectSetting` error (401) when access to project settings is denied
+    
+    All authorization errors inherit from the base `AuthorizationError` type.
+    
+    ## CORS Support
+    
+    The API includes Cross-Origin Resource Sharing (CORS) support, allowing browsers to make cross-origin requests.
+    
+    When CORS is enabled, the server will:
+    - Include appropriate Access-Control-* headers in responses
+    - Handle OPTIONS preflight requests
+    - Support configurable allowed origins, methods, and headers
   version: 1.0.0
   license:
     name: Proprietary
-    url: "https://www.listen.dev"
+    url: "https://www.garnet.ai"
 servers:
-  - url: "https://core-staging.listen.dev"
+  - url: "https://staging-api.garnet.ai"
     description: Staging server
-  - url: "https://core-dev.listen.dev"
+  - url: "https://dev-api.garnet.ai"
     description: Development server
-  - url: "https://core.listen.dev"
+  - url: "https://api.garnet.ai"
     description: Production server
 paths:
+  /api/v1/issue_classes:
+    get:
+      summary: List all available issue classes
+      description: |
+        Retrieves a list of all enabled issue classes that can be used when creating issues.
+        This endpoint returns the valid issue classes that the system currently supports.
+      operationId: listIssueClasses
+      security:
+        - BearerAuth: []
+        - UserTokenAuth: []
+        - ProjectTokenAuth: []
+      responses:
+        "200":
+          description: Successfully retrieved list of issue classes
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/IssueClass'
+        "401":
+          description: Unauthorized - authentication required
+          content:
+            application/json:
+              schema:
+                oneOf:
+                  - $ref: '#/components/schemas/Error'
+                  - $ref: '#/components/schemas/UnauthorizedIssue'
+
+  /api/v1/project_settings:
+    get:
+      summary: List all project settings
+      description: |
+        Retrieves a list of all project settings for the authenticated user's project.
+        This endpoint supports pagination with cursor-based navigation.
+      operationId: listProjectSettings
+      security:
+        - BearerAuth: []
+        - UserTokenAuth: []
+        - ProjectTokenAuth: []
+      parameters:
+        - $ref: '#/components/parameters/CursorAfter'
+        - $ref: '#/components/parameters/CursorBefore'
+        - $ref: '#/components/parameters/First'
+        - $ref: '#/components/parameters/Last'
+      responses:
+        "200":
+          description: Successfully retrieved list of project settings
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProjectSettingPage'
+        "401":
+          description: Unauthorized - authentication required
+          content:
+            application/json:
+              schema:
+                oneOf:
+                  - $ref: '#/components/schemas/Error'
+                  - $ref: '#/components/schemas/UnauthorizedProjectSetting'
+    post:
+      summary: Create a new project setting
+      description: |
+        Creates a new project setting with the specified key and value.
+        Project settings allow customizing project behavior for various features.
+      operationId: createProjectSetting
+      security:
+        - BearerAuth: []
+        - UserTokenAuth: []
+        - ProjectTokenAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ProjectSettingCreate'
+      responses:
+        "201":
+          description: Successfully created project setting
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProjectSettingCreated'
+        "400":
+          description: Bad request - invalid key or value
+          content:
+            application/json:
+              schema:
+                oneOf:
+                  - $ref: '#/components/schemas/Error'
+                  - $ref: '#/components/schemas/InvalidProjectSettingKey'
+                  - $ref: '#/components/schemas/InvalidProjectSettingValue'
+                  - $ref: '#/components/schemas/InvalidIssueClass'
+        "401":
+          description: Unauthorized - authentication required
+          content:
+            application/json:
+              schema:
+                oneOf:
+                  - $ref: '#/components/schemas/Error'
+                  - $ref: '#/components/schemas/UnauthorizedProjectSetting'
+        "409":
+          description: Conflict - setting with this key already exists
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /api/v1/project_settings/{key}:
+    parameters:
+      - name: key
+        in: path
+        description: The key of the project setting to operate on
+        required: true
+        schema:
+          type: string
+    get:
+      summary: Get a specific project setting
+      description: |
+        Retrieves a specific project setting by its key.
+      operationId: getProjectSetting
+      security:
+        - BearerAuth: []
+        - UserTokenAuth: []
+        - ProjectTokenAuth: []
+      responses:
+        "200":
+          description: Successfully retrieved project setting
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProjectSetting'
+        "400":
+          description: Bad request - invalid project setting key
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/InvalidProjectSettingKey'
+        "401":
+          description: Unauthorized - authentication required
+          content:
+            application/json:
+              schema:
+                oneOf:
+                  - $ref: '#/components/schemas/Error'
+                  - $ref: '#/components/schemas/UnauthorizedProjectSetting'
+        "404":
+          description: Not found - project setting doesn't exist
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProjectSettingNotFound'
+    patch:
+      summary: Update a project setting
+      description: |
+        Updates the value of an existing project setting identified by its key.
+      operationId: updateProjectSetting
+      security:
+        - BearerAuth: []
+        - UserTokenAuth: []
+        - ProjectTokenAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ProjectSettingUpdate'
+      responses:
+        "200":
+          description: Successfully updated project setting
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProjectSettingUpdated'
+        "400":
+          description: Bad request - invalid key or value
+          content:
+            application/json:
+              schema:
+                oneOf:
+                  - $ref: '#/components/schemas/Error'
+                  - $ref: '#/components/schemas/InvalidProjectSettingKey'
+                  - $ref: '#/components/schemas/InvalidProjectSettingValue'
+                  - $ref: '#/components/schemas/InvalidIssueClass'
+        "401":
+          description: Unauthorized - authentication required
+          content:
+            application/json:
+              schema:
+                oneOf:
+                  - $ref: '#/components/schemas/Error'
+                  - $ref: '#/components/schemas/UnauthorizedProjectSetting'
+        "404":
+          description: Not found - project setting doesn't exist
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProjectSettingNotFound'
+    delete:
+      summary: Delete a project setting
+      description: |
+        Deletes a project setting identified by its key.
+      operationId: deleteProjectSetting
+      security:
+        - BearerAuth: []
+        - UserTokenAuth: []
+        - ProjectTokenAuth: []
+      responses:
+        "204":
+          description: Successfully deleted project setting
+        "400":
+          description: Bad request - invalid project setting key
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/InvalidProjectSettingKey'
+        "401":
+          description: Unauthorized - authentication required
+          content:
+            application/json:
+              schema:
+                oneOf:
+                  - $ref: '#/components/schemas/Error'
+                  - $ref: '#/components/schemas/UnauthorizedProjectSetting'
+        "404":
+          description: Not found - project setting doesn't exist
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProjectSettingNotFound'
+
+  /api/v1/auth/google/login:
+    get:
+      summary: Initiate Google OAuth login flow
+      description: |
+        Redirects the user to Google's authentication page to begin the OAuth 2.0 authentication flow.
+        This endpoint starts the process of authenticating a user via their Google account.
+        
+        The flow works as follows:
+        1. User accesses this endpoint
+        2. Server generates a state token for CSRF protection
+        3. User is redirected to Google's authentication page
+        4. After authentication with Google, user is redirected to the callback endpoint
+        
+        No authentication is required to access this endpoint.
+      operationId: googleLoginInit
+      security: []
+      responses:
+        "302":
+          description: |
+            Redirect to Google's authentication page.
+            The response includes a Location header with the Google authorization URL.
+          headers:
+            Location:
+              schema:
+                type: string
+              description: URL to Google's authentication page
+
+  /api/v1/auth/google/callback:
+    get:
+      summary: Handle Google OAuth callback
+      description: |
+        Handles the callback from Google OAuth 2.0 authentication flow.
+        This endpoint receives the authorization code from Google, exchanges it for an access token,
+        retrieves the user's profile information, and creates or authenticates the user in the system.
+        
+        The flow continues as follows:
+        1. Google redirects the user to this endpoint with a code and state parameter
+        2. Server validates the state parameter to prevent CSRF attacks
+        3. Server exchanges the code for an access token
+        4. Server retrieves user information from Google
+        5. Server authenticates the user and returns a JWT token
+        
+        No authentication is required to access this endpoint.
+      operationId: googleCallback
+      security: []
+      parameters:
+        - name: code
+          in: query
+          description: Authorization code provided by Google
+          required: true
+          schema:
+            type: string
+        - name: state
+          in: query
+          description: State token for CSRF protection validation
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Authentication successful, returns a JWT token and project ID for API access
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  token:
+                    type: string
+                    description: JWT token for API authentication
+                  project_id:
+                    type: string
+                    description: ID of the user's default project for immediate access
+                    format: uuid
+        "400":
+          description: Bad request, invalid parameters
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          description: Unauthorized, failed to authenticate with Google
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /api/v1/tokens:
+    post:
+      security:
+        - UserTokenAuth: []
+      summary: Create a new project token
+      description: |
+        Creates a new project API token that can be used for programmatic access to the API.
+        Project tokens can have specific permissions and are used to authenticate API requests.
+        
+        A user can only create tokens with permissions they themselves possess.
+        This prevents privilege escalation where a user could create a token with more permissions than they have.
+        
+        Required permissions: `create` on token resource.
+      operationId: createToken
+      requestBody:
+        description: Token creation request
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateToken"
+      responses:
+        "201":
+          description: Token created successfully
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TokenCreated"
+        "400":
+          description: Invalid request parameters
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          description: Unauthorized, authentication required
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "403":
+          description: Forbidden, cannot create token with requested permissions
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+    get:
+      security:
+        - UserTokenAuth: []
+      summary: List all tokens for a project
+      description: |
+        Retrieves a paginated list of all tokens associated with the authenticated project.
+        
+        Required permissions: `list` on token resource.
+      operationId: listTokens
+      parameters:
+        - $ref: "#/components/parameters/CursorAfter"
+        - $ref: "#/components/parameters/CursorBefore"
+        - $ref: "#/components/parameters/First"
+        - $ref: "#/components/parameters/Last"
+      responses:
+        "200":
+          description: List of tokens
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Page"
+        "401":
+          description: Unauthorized, authentication required
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /api/v1/tokens/{id}:
+    get:
+      security:
+        - UserTokenAuth: []
+      summary: Get a token by ID
+      description: |
+        Retrieves a specific token by its ID.
+        
+        Required permissions: `read` on token resource.
+      operationId: getToken
+      parameters:
+        - name: id
+          in: path
+          description: Token ID
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: Token details
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Token"
+        "400":
+          description: Invalid token ID format
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          description: Unauthorized, authentication required
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: Token not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+    patch:
+      security:
+        - UserTokenAuth: []
+      summary: Update a token
+      description: |
+        Updates an existing token's properties such as name or permissions.
+        
+        A user can only update tokens with permissions they themselves possess.
+        This prevents privilege escalation where a user could give a token more permissions than they have.
+        
+        Required permissions: `update` on token resource.
+      operationId: updateToken
+      parameters:
+        - name: id
+          in: path
+          description: Token ID
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        description: Token update request
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateToken"
+      responses:
+        "200":
+          description: Token updated successfully
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TokenUpdated"
+        "400":
+          description: Invalid request parameters
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          description: Unauthorized, authentication required
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "403":
+          description: Forbidden, cannot update token with requested permissions
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: Token not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+    delete:
+      security:
+        - UserTokenAuth: []
+      summary: Delete a token
+      description: |
+        Deletes a token, immediately revoking its access to the API.
+        
+        Required permissions: `delete` on token resource.
+      operationId: deleteToken
+      parameters:
+        - name: id
+          in: path
+          description: Token ID
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "204":
+          description: Token deleted successfully
+        "400":
+          description: Invalid token ID format
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          description: Unauthorized, authentication required
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: Token not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
   /api/v1/events:
     put:
       security:
@@ -29,20 +603,20 @@ paths:
         content:
           application/json:
             schema:
-              $ref: "#/components/schemas/Event"
+              $ref: "#/components/schemas/CreateOrUpdateEvent"
       responses:
         "201":
           description: Event created successfully
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/IngestedEvent"
+                $ref: "#/components/schemas/EventCreatedOrUpdated"
         "202":
           description: Event updated successfully
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/IngestedEvent"
+                $ref: "#/components/schemas/EventCreatedOrUpdated"
         "400":
           description: Invalid input
           content:
@@ -54,10 +628,10 @@ paths:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/Error"
+                $ref: "#/components/schemas/UnauthorizedEvents"
         "500":
           description: Internal server error
-  
+
   /api/v1/agents/{id}:
     get:
       security:
@@ -89,9 +663,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/Error"
-              example:
-                error: "permission denied"
+                $ref: "#/components/schemas/UnauthorizedAgent"
         "500":
           description: Internal server error
     delete:
@@ -163,7 +735,7 @@ paths:
                 error: "permission denied"
         "500":
           description: Internal server error
-  
+
   /api/v1/agents:
     post:
       security:
@@ -185,11 +757,44 @@ paths:
               schema:
                 $ref: "#/components/schemas/AgentCreated"
         "400":
-          description: Invalid input
+          description: Invalid input, including label validation errors
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/Error"
+              examples:
+                invalidLabelKey:
+                  value:
+                    error: "invalid label key format"
+                  summary: Invalid label key format
+                invalidLabelValue:
+                  value:
+                    error: "invalid label value format"
+                  summary: Invalid label value format
+                tooManyLabels:
+                  value:
+                    error: "too many labels"
+                  summary: Too many labels (exceeds maximum of 64)
+                labelKeyTooLong:
+                  value:
+                    error: "label key exceeds maximum length"
+                  summary: Label key exceeds 63 character maximum
+                labelValueTooLong:
+                  value:
+                    error: "label value exceeds maximum length"
+                  summary: Label value exceeds 1024 character maximum
+                missingRequiredFields:
+                  value:
+                    error: "invalid agent: os is required"
+                  summary: Missing required agent fields
+                invalidIP:
+                  value:
+                    error: "invalid agent: invalid ip"
+                  summary: Invalid IP address format
+                invalidAgentKind:
+                  value:
+                    error: "invalid agent kind"
+                  summary: Invalid agent kind
         "401":
           description: Unauthorized
         "500":
@@ -200,55 +805,35 @@ paths:
       summary: Query agents returning list of agents
       operationId: listAgents
       parameters:
-      - name: filters
-        in: query
-        description: Filters for querying agents
-        required: false
-        style: form
-        explode: true
-        schema:
-          $ref: "#/components/schemas/AgentFilters"
+        - name: filters
+          in: query
+          description: Filters for querying agents
+          required: false
+          style: form
+          explode: true
+          schema:
+            $ref: "#/components/schemas/AgentFilters"
 
-      - name: labels
-        in: query
-        description: Labels for querying agents
-        required: false
-        style: form
-        explode: true
-        schema:
-          type: object
-        example:
-          label.mylabel: value1
+        - name: labels
+          in: query
+          description: |
+            Labels for querying agents (e.g., label.environment=production). Labels must follow validation rules:
+            - Label keys must match regex: ^[a-zA-Z0-9][-_a-zA-Z0-9]*[a-zA-Z0-9]$|^[a-zA-Z0-9]$
+            - Label values must match regex: ^[a-zA-Z0-9][-_a-zA-Z0-9/. ]*$
+            - Invalid labels will result in a 400 Bad Request error with specific validation errors
+          required: false
+          style: form
+          explode: true
+          schema:
+            type: object
+          example:
+            label.environment: production
+            label.region: us-west-1
 
-      - name: first
-        in: query
-        description: Number of items to return from the start
-        required: false
-        schema:
-          type: integer
-          minimum: 1
-
-      - name: after
-        in: query
-        description: Cursor for paginating forward
-        required: false
-        schema:
-          type: string
-
-      - name: last
-        in: query
-        description: Number of items to return from the end
-        required: false
-        schema:
-          type: integer
-          minimum: 1
-
-      - name: before
-        in: query
-        description: Cursor for paginating backward
-        required: false
-        schema:
-          type: string
+        - $ref: "#/components/parameters/First"
+        - $ref: "#/components/parameters/CursorAfter"
+        - $ref: "#/components/parameters/Last"
+        - $ref: "#/components/parameters/CursorBefore"
       responses:
         "200":
           description: Object with list of agents and pagination
@@ -257,16 +842,41 @@ paths:
               schema:
                 $ref: "#/components/schemas/Page"
         "400":
-          description: Invalid input
+          description: Invalid input, including label validation errors
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/Error"
+              examples:
+                invalidLabelKey:
+                  value:
+                    error: "invalid label key format"
+                  summary: Invalid label key format
+                invalidLabelValue:
+                  value:
+                    error: "invalid label value format"
+                  summary: Invalid label value format
+                tooManyLabels:
+                  value:
+                    error: "too many labels"
+                  summary: Too many labels (exceeds maximum of 64)
+                labelKeyTooLong:
+                  value:
+                    error: "label key exceeds maximum length"
+                  summary: Label key exceeds 63 character maximum
+                labelValueTooLong:
+                  value:
+                    error: "label value exceeds maximum length"
+                  summary: Label value exceeds 1024 character maximum
+                invalidIP:
+                  value:
+                    error: "invalid ip"
+                  summary: Invalid IP address format
         "401":
           description: Unauthorized
         "500":
           description: Internal server error
-  
+
   /api/v1/issues:
     post:
       security:
@@ -288,11 +898,48 @@ paths:
               schema:
                 $ref: "#/components/schemas/IssueCreated"
         "400":
-          description: Invalid input
+          description: Invalid input, including label validation errors
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/Error"
+              examples:
+                invalidLabelKey:
+                  value:
+                    error: "invalid label key format"
+                  summary: Invalid label key format
+                invalidLabelValue:
+                  value:
+                    error: "invalid label value format"
+                  summary: Invalid label value format
+                tooManyLabels:
+                  value:
+                    error: "too many labels"
+                  summary: Too many labels (exceeds maximum of 64)
+                labelKeyTooLong:
+                  value:
+                    error: "label key exceeds maximum length"
+                  summary: Label key exceeds 63 character maximum
+                labelValueTooLong:
+                  value:
+                    error: "label value exceeds maximum length"
+                  summary: Label value exceeds 1024 character maximum
+                invalidClass:
+                  value:
+                    error: "invalid issue class"
+                  summary: Invalid issue class
+                invalidState:
+                  value:
+                    error: "invalid issue state"
+                  summary: Invalid issue state
+                invalidPriority:
+                  value:
+                    error: "invalid issue priority"
+                  summary: Invalid issue priority
+                invalidEventIDs:
+                  value:
+                    error: "invalid issue event IDs"
+                  summary: Invalid or missing event IDs
         "401":
           description: Unauthorized
         "500":
@@ -309,28 +956,49 @@ paths:
           required: false
           schema:
             $ref: "#/components/schemas/IssueClass"
-        
+
         - name: filter.state
           in: query
           description: Filter issues by state
           required: false
           schema:
             $ref: "#/components/schemas/IssueState"
-        
+
         - name: filter.priority
           in: query
           description: Filter issues by priority
           required: false
           schema:
             $ref: "#/components/schemas/IssuePriority"
-        
+
         - name: filter.agent_kind
           in: query
           description: Filter issues by agent kind
           required: false
           schema:
             $ref: "#/components/schemas/AgentKind"
-        
+            
+        - name: filter.repository_id
+          in: query
+          description: Filter issues by repository ID
+          required: false
+          schema:
+            type: string
+            
+        - name: filter.repository
+          in: query
+          description: Filter issues by repository name
+          required: false
+          schema:
+            type: string
+            
+        - name: filter.workflow_name
+          in: query
+          description: Filter issues by workflow name
+          required: false
+          schema:
+            type: string
+
         - name: include_ignored
           in: query
           description: Whether to include ignored issues in the results
@@ -338,10 +1006,14 @@ paths:
           schema:
             type: boolean
             default: false
-        
+
         - name: label.*
           in: query
-          description: Labels for querying issues (e.g., label.severity=high)
+          description: |
+            Labels for querying issues (e.g., label.severity=high). Labels must follow validation rules:
+            - Label keys must match regex: ^[a-zA-Z0-9][-_a-zA-Z0-9]*[a-zA-Z0-9]$|^[a-zA-Z0-9]$
+            - Label values must match regex: ^[a-zA-Z0-9][-_a-zA-Z0-9/. ]*$
+            - Invalid labels will result in a 400 Bad Request error with specific validation errors
           required: false
           style: form
           explode: true
@@ -351,35 +1023,10 @@ paths:
             label.severity: high
             label.type: bug
         
-        - name: first
-          in: query
-          description: Number of items to return from the start
-          required: false
-          schema:
-            type: integer
-            minimum: 1
-        
-        - name: after
-          in: query
-          description: Cursor for paginating forward
-          required: false
-          schema:
-            type: string
-        
-        - name: last
-          in: query
-          description: Number of items to return from the end
-          required: false
-          schema:
-            type: integer
-            minimum: 1
-        
-        - name: before
-          in: query
-          description: Cursor for paginating backward
-          required: false
-          schema:
-            type: string
+        - $ref: "#/components/parameters/First"
+        - $ref: "#/components/parameters/CursorAfter"
+        - $ref: "#/components/parameters/Last"
+        - $ref: "#/components/parameters/CursorBefore"
       
       responses:
         "200":
@@ -387,20 +1034,34 @@ paths:
           content:
             application/json:
               schema:
-                type: object
-                properties:
-                  items:
-                    type: array
-                    items:
-                      $ref: "#/components/schemas/Issue"
-                  pageInfo:
-                    $ref: "#/components/schemas/PageInfo"
+                $ref: "#/components/schemas/Page"
         "400":
-          description: Invalid input
+          description: Invalid input, including label validation errors
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/Error"
+              examples:
+                invalidLabelKey:
+                  value:
+                    error: "invalid label key format"
+                  summary: Invalid label key format
+                invalidLabelValue:
+                  value:
+                    error: "invalid label value format"
+                  summary: Invalid label value format
+                tooManyLabels:
+                  value:
+                    error: "too many labels"
+                  summary: Too many labels (exceeds maximum of 64)
+                labelKeyTooLong:
+                  value:
+                    error: "label key exceeds maximum length"
+                  summary: Label key exceeds 63 character maximum
+                labelValueTooLong:
+                  value:
+                    error: "label value exceeds maximum length"
+                  summary: Label value exceeds 1024 character maximum
         "401":
           description: Unauthorized
         "500":
@@ -444,12 +1105,10 @@ paths:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/Error"
-              example:
-                error: "permission denied"
+                $ref: "#/components/schemas/UnauthorizedIssue"
         "500":
           description: Internal server error
-    
+
     delete:
       security:
         - BearerAuth: []
@@ -488,7 +1147,7 @@ paths:
                 error: "permission denied"
         "500":
           description: Internal server error
-    
+
     patch:
       security:
         - BearerAuth: []
@@ -517,7 +1176,7 @@ paths:
               schema:
                 $ref: "#/components/schemas/IssueUpdated"
         "400":
-          description: Invalid input (e.g., when ignored=true and ignored_reason is missing)
+          description: Invalid input
           content:
             application/json:
               schema:
@@ -526,6 +1185,35 @@ paths:
                 missingReason:
                   value:
                     error: "ignored_reason is required when ignored is set to true"
+                  summary: Missing ignored reason
+                missingStateReason:
+                  value:
+                    error: "reason is required when changing state"
+                  summary: Missing state change reason
+                emptyEvents:
+                  value:
+                    error: "cannot remove all events from an issue"
+                  summary: Cannot remove all events
+                invalidLabelKey:
+                  value:
+                    error: "invalid label key format"
+                  summary: Invalid label key format
+                invalidLabelValue:
+                  value:
+                    error: "invalid label value format"
+                  summary: Invalid label value format
+                tooManyLabels:
+                  value:
+                    error: "too many labels"
+                  summary: Too many labels (exceeds maximum of 64)
+                labelKeyTooLong:
+                  value:
+                    error: "label key exceeds maximum length"
+                  summary: Label key exceeds 63 character maximum
+                labelValueTooLong:
+                  value:
+                    error: "label value exceeds maximum length"
+                  summary: Label value exceeds 1024 character maximum
         "404":
           description: Issue not found
           content:
@@ -540,6 +1228,189 @@ paths:
                 $ref: "#/components/schemas/Error"
               example:
                 error: "permission denied"
+        "500":
+          description: Internal server error
+
+  # Issue Action endpoints
+  /api/v1/issues/{id}/actions/allow:
+    post:
+      security:
+        - BearerAuth: []
+      summary: Perform allow action on issue
+      description: |
+        Allows network traffic described in the issue by creating an appropriate network policy rule
+        at the specified scope level. The issue must have at least one associated event containing
+        network destination information.
+      operationId: allowIssue
+      parameters:
+        - name: id
+          in: path
+          description: ID of issue to perform action on
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        description: Action details specifying scope and reason
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/IssueAction"
+      responses:
+        "200":
+          description: Action performed successfully
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/IssueActionPerformed"
+        "400":
+          description: Invalid input
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+              examples:
+                missingScope:
+                  value:
+                    error: "invalid issue action scope"
+                missingReason:
+                  value:
+                    error: "invalid issue reason"
+                noEvents:
+                  value:
+                    error: "no associated events"
+                noNetworkDestination:
+                  value:
+                    error: "issue has no network destination"
+        "404":
+          description: Issue not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "500":
+          description: Internal server error
+
+  /api/v1/issues/{id}/actions/block:
+    post:
+      security:
+        - BearerAuth: []
+      summary: Perform block action on issue
+      description: |
+        Blocks network traffic described in the issue by creating an appropriate network policy rule
+        at the specified scope level. The issue must have at least one associated event containing
+        network destination information.
+      operationId: blockIssue
+      parameters:
+        - name: id
+          in: path
+          description: ID of issue to perform action on
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        description: Action details specifying scope and reason
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/IssueAction"
+      responses:
+        "200":
+          description: Action performed successfully
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/IssueActionPerformed"
+        "400":
+          description: Invalid input
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+              examples:
+                missingScope:
+                  value:
+                    error: "invalid issue action scope"
+                missingReason:
+                  value:
+                    error: "invalid issue reason"
+                noEvents:
+                  value:
+                    error: "no associated events"
+                noNetworkDestination:
+                  value:
+                    error: "issue has no network destination"
+        "404":
+          description: Issue not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "500":
+          description: Internal server error
+
+  /api/v1/issues/{id}/actions:
+    get:
+      security:
+        - BearerAuth: []
+      summary: Get action history for an issue
+      description: |
+        Retrieves the history of actions performed on an issue.
+      operationId: issueActionHistory
+      parameters:
+        - name: id
+          in: path
+          description: ID of issue to get action history for
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - $ref: "#/components/parameters/First"
+        - $ref: "#/components/parameters/CursorAfter"
+        - $ref: "#/components/parameters/Last"
+        - $ref: "#/components/parameters/CursorBefore"
+      responses:
+        "200":
+          description: Object with list of issue actions and pagination
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/IssueActionHistory"
+        "400":
+          description: Invalid ID format
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: Issue not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
         "500":
           description: Internal server error
 
@@ -619,11 +1490,11 @@ paths:
               schema:
                 $ref: "#/components/schemas/Error"
         "401":
-          description: Unauthorized
+          description: Unauthorized (missing token or permission denied)
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/Error"
+                $ref: "#/components/schemas/UnauthorizedNetworkPolicy"
         "500":
           description: Internal server error
 
@@ -725,15 +1596,17 @@ paths:
           required: true
           schema:
             $ref: "#/components/schemas/NetworkPolicyScope"
+        - $ref: "#/components/parameters/First"
+        - $ref: "#/components/parameters/CursorAfter"
+        - $ref: "#/components/parameters/Last"
+        - $ref: "#/components/parameters/CursorBefore"
       responses:
         "200":
-          description: List of network policies
+          description: Object with list of network policies and pagination
           content:
             application/json:
               schema:
-                type: array
-                items:
-                  $ref: "#/components/schemas/NetworkPolicy"
+                $ref: "#/components/schemas/Page"
         "400":
           description: Invalid scope
           content:
@@ -768,13 +1641,22 @@ paths:
           required: false
           schema:
             type: string
+        - name: format
+          in: query
+          description: Response format (set to "jibril" for Jibril format)
+          required: false
+          schema:
+            type: string
+            enum: ["jibril"]
       responses:
         "200":
           description: Merged network policy
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/MergedNetworkPolicy"
+                oneOf:
+                  - $ref: "#/components/schemas/MergedNetworkPolicy"
+                  - $ref: "#/components/schemas/JibrilFormatNetworkPolicy"
         "400":
           description: Invalid parameters
           content:
@@ -965,7 +1847,180 @@ paths:
                 $ref: "#/components/schemas/Error"
         "500":
           description: Internal server error
+  /api/v1/webhooks:
+    post:
+      security:
+        - BearerAuth: []
+      summary: Create a new webhook
+      operationId: createWebhook
+      requestBody:
+        description: Webhook object that needs to be created
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/WebhookCreate"
+      responses:
+        "201":
+          description: Webhook created successfully
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WebhookCreated"
+        "400":
+          description: Invalid input
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          description: Unauthorized
+        "500":
+          description: Internal server error
+    get:
+      security:
+        - BearerAuth: []
+      summary: Query webhooks returning list of webhooks
+      operationId: listWebhooks
+      parameters:
+        - name: first
+          in: query
+          description: Number of items to return from the start
+          required: false
+          schema:
+            type: integer
+            minimum: 1
 
+        - name: after
+          in: query
+          description: Cursor for paginating forward
+          required: false
+          schema:
+            type: string
+
+        - name: last
+          in: query
+          description: Number of items to return from the end
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+
+        - name: before
+          in: query
+          description: Cursor for paginating backward
+          required: false
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Object with list of webhooks and pagination
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  items:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/Webhook"
+                  pageInfo:
+                    $ref: "#/components/schemas/PageInfo"
+        "400":
+          description: Invalid input
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          description: Unauthorized
+        "500":
+          description: Internal server error
+
+  /api/v1/webhooks/{id}:
+    patch:
+      security:
+        - BearerAuth: []
+      summary: Update webhook fields by ID
+      operationId: updateWebhook
+      parameters:
+        - name: id
+          in: path
+          description: ID of webhook to update
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        description: Webhook fields that need to be updated
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/WebhookUpdate"
+      responses:
+        "200":
+          description: Webhook updated successfully
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WebhookUpdated"
+        "400":
+          description: Invalid input
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: Webhook not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "500":
+          description: Internal server error
+    delete:
+      security:
+        - BearerAuth: []
+      summary: Delete webhook by ID
+      operationId: deleteWebhook
+      parameters:
+        - name: id
+          in: path
+          description: ID of webhook to delete
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "204":
+          description: Webhook deleted
+        "400":
+          description: Invalid ID format
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: Webhook not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "500":
+          description: Internal server error
   /healthz:
     get:
       security: []
@@ -978,18 +2033,1181 @@ paths:
           description: Service not found
         "500":
           description: Service is unhealthy
+          
+  # Project-specific endpoints with project_id path parameter
+  /api/v1/projects/{project_id}/issue_classes:
+    get:
+      security:
+        - UserTokenAuth: []
+      summary: List all available issue classes for a specific project
+      description: |
+        Retrieves a list of all enabled issue classes that can be used when creating issues for this project.
+        This endpoint returns the valid issue classes that the system currently supports for the specified project.
+        This endpoint is primarily intended for use by the web UI.
+      operationId: listProjectIssueClasses
+      parameters:
+        - name: project_id
+          in: path
+          description: ID of the project
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: Successfully retrieved list of issue classes
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/IssueClass'
+        "401":
+          description: Unauthorized - authentication required
+          content:
+            application/json:
+              schema:
+                oneOf:
+                  - $ref: '#/components/schemas/Error'
+                  - $ref: '#/components/schemas/UnauthorizedIssue'
+        "404":
+          description: Project not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /api/v1/projects/{project_id}/issues/{id}:
+    get:
+      security:
+        - UserTokenAuth: []
+      summary: Get issue by ID for a specific project
+      description: |
+        Retrieves a specific issue by ID for the specified project.
+        This endpoint is primarily intended for use by the web UI.
+      operationId: getProjectIssueById
+      parameters:
+        - name: project_id
+          in: path
+          description: ID of the project
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: id
+          in: path
+          description: ID of issue to return
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: Issue found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Issue"
+        "400":
+          description: Invalid ID format
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: Issue not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          description: Unauthorized (missing token or permission denied)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UnauthorizedIssue"
+        "500":
+          description: Internal server error
+    delete:
+      security:
+        - UserTokenAuth: []
+      summary: Delete issue by ID for a specific project
+      description: |
+        Deletes a specific issue by ID for the specified project.
+        This endpoint is primarily intended for use by the web UI.
+      operationId: deleteProjectIssueById
+      parameters:
+        - name: project_id
+          in: path
+          description: ID of the project
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: id
+          in: path
+          description: ID of issue to delete
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "204":
+          description: Issue deleted
+        "400":
+          description: Invalid ID format
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: Issue not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          description: Unauthorized (missing token or permission denied)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+              example:
+                error: "permission denied"
+        "500":
+          description: Internal server error
+    patch:
+      security:
+        - UserTokenAuth: []
+      summary: Update issue fields by ID for a specific project
+      description: |
+        Updates a specific issue by ID for the specified project.
+        This endpoint is primarily intended for use by the web UI.
+      operationId: updateProjectIssueById
+      parameters:
+        - name: project_id
+          in: path
+          description: ID of the project
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: id
+          in: path
+          description: ID of issue to update
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        description: Issue fields that need to be updated
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateIssue"
+      responses:
+        "200":
+          description: Issue updated successfully
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/IssueUpdated"
+        "400":
+          description: Invalid input
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+              examples:
+                missingReason:
+                  value:
+                    error: "ignored_reason is required when ignored is set to true"
+                  summary: Missing ignored reason
+                missingStateReason:
+                  value:
+                    error: "reason is required when changing state"
+                  summary: Missing state change reason
+                emptyEvents:
+                  value:
+                    error: "cannot remove all events from an issue"
+                  summary: Cannot remove all events
+                invalidLabelKey:
+                  value:
+                    error: "invalid label key format"
+                  summary: Invalid label key format
+                invalidLabelValue:
+                  value:
+                    error: "invalid label value format"
+                  summary: Invalid label value format
+                tooManyLabels:
+                  value:
+                    error: "too many labels"
+                  summary: Too many labels (exceeds maximum of 64)
+                labelKeyTooLong:
+                  value:
+                    error: "label key exceeds maximum length"
+                  summary: Label key exceeds 63 character maximum
+                labelValueTooLong:
+                  value:
+                    error: "label value exceeds maximum length"
+                  summary: Label value exceeds 1024 character maximum
+        "404":
+          description: Issue not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          description: Unauthorized (missing token or permission denied)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+              example:
+                error: "permission denied"
+        "500":
+          description: Internal server error
+
+  /api/v1/projects/{project_id}/issues/{id}/actions/allow:
+    post:
+      security:
+        - UserTokenAuth: []
+      summary: Perform allow action on issue for a specific project
+      description: |
+        Allows network traffic described in the issue by creating an appropriate network policy rule
+        at the specified scope level. The issue must have at least one associated event containing
+        network destination information.
+        This endpoint is primarily intended for use by the web UI.
+      operationId: allowProjectIssue
+      parameters:
+        - name: project_id
+          in: path
+          description: ID of the project
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: id
+          in: path
+          description: ID of issue to perform action on
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        description: Action details specifying scope and reason
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/IssueAction"
+      responses:
+        "200":
+          description: Action performed successfully
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/IssueActionPerformed"
+        "400":
+          description: Invalid input
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+              examples:
+                missingScope:
+                  value:
+                    error: "invalid issue action scope"
+                missingReason:
+                  value:
+                    error: "invalid issue reason"
+                noEvents:
+                  value:
+                    error: "no associated events"
+                noNetworkDestination:
+                  value:
+                    error: "issue has no network destination"
+        "404":
+          description: Issue not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "500":
+          description: Internal server error
+
+  /api/v1/projects/{project_id}/issues/{id}/actions/block:
+    post:
+      security:
+        - UserTokenAuth: []
+      summary: Perform block action on issue for a specific project
+      description: |
+        Blocks network traffic described in the issue by creating an appropriate network policy rule
+        at the specified scope level. The issue must have at least one associated event containing
+        network destination information.
+        This endpoint is primarily intended for use by the web UI.
+      operationId: blockProjectIssue
+      parameters:
+        - name: project_id
+          in: path
+          description: ID of the project
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: id
+          in: path
+          description: ID of issue to perform action on
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        description: Action details specifying scope and reason
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/IssueAction"
+      responses:
+        "200":
+          description: Action performed successfully
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/IssueActionPerformed"
+        "400":
+          description: Invalid input
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+              examples:
+                missingScope:
+                  value:
+                    error: "invalid issue action scope"
+                missingReason:
+                  value:
+                    error: "invalid issue reason"
+                noEvents:
+                  value:
+                    error: "no associated events"
+                noNetworkDestination:
+                  value:
+                    error: "issue has no network destination"
+        "404":
+          description: Issue not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "500":
+          description: Internal server error
+
+  /api/v1/projects/{project_id}/issues/{id}/actions:
+    get:
+      security:
+        - UserTokenAuth: []
+      summary: Get action history for an issue in a specific project
+      description: |
+        Retrieves the history of actions performed on an issue for the specified project.
+        This endpoint is primarily intended for use by the web UI.
+      operationId: projectIssueActionHistory
+      parameters:
+        - name: project_id
+          in: path
+          description: ID of the project
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: id
+          in: path
+          description: ID of issue to get action history for
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - $ref: "#/components/parameters/First"
+        - $ref: "#/components/parameters/CursorAfter"
+        - $ref: "#/components/parameters/Last"
+        - $ref: "#/components/parameters/CursorBefore"
+      responses:
+        "200":
+          description: Object with list of issue actions and pagination
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/IssueActionHistory"
+        "400":
+          description: Invalid ID format
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: Issue not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "500":
+          description: Internal server error
+
+  /api/v1/projects/{project_id}/counters:
+    get:
+      security:
+        - UserTokenAuth: []
+      summary: Get counters for a specific project
+      description: |
+        Retrieves counters for a specific project, including repository and workflow counts.
+        This endpoint uses the project_id from the path parameter instead of inferring it from the token.
+        
+        Functionally equivalent to /api/v1/project_counters but with explicit project ID in the path.
+        
+        Required permissions: `read` on project resource.
+      operationId: projectCountersByPath
+      parameters:
+        - name: project_id
+          in: path
+          description: Project ID to get counters for
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: Project counters found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProjectCounters"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: Project not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "500":
+          description: Internal server error
+          
+  /api/v1/projects/{project_id}/tokens:
+    post:
+      security:
+        - UserTokenAuth: []
+      summary: Create a new token for a specific project
+      description: |
+        Creates a new API token for the specified project.
+        This endpoint uses the project_id from the path parameter instead of inferring it from the token.
+        
+        Functionally equivalent to /api/v1/tokens but with explicit project ID in the path.
+        
+        Required permissions: `create` on token resource.
+      operationId: createTokenByPath
+      parameters:
+        - name: project_id
+          in: path
+          description: Project ID to create token for
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        description: Token creation request
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateToken"
+      responses:
+        "201":
+          description: Token created successfully
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TokenCreated"
+        "400":
+          description: Invalid request parameters
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          description: Unauthorized, authentication required
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "403":
+          description: Forbidden, cannot create token with requested permissions
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+                
+    get:
+      security:
+        - UserTokenAuth: []
+      summary: List all tokens for a specific project
+      description: |
+        Retrieves a paginated list of all tokens associated with the specified project.
+        This endpoint uses the project_id from the path parameter instead of inferring it from the token.
+        
+        Functionally equivalent to /api/v1/tokens but with explicit project ID in the path.
+        
+        Required permissions: `list` on token resource.
+      operationId: listTokensByPath
+      parameters:
+        - name: project_id
+          in: path
+          description: Project ID to list tokens for
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - $ref: "#/components/parameters/CursorAfter"
+        - $ref: "#/components/parameters/CursorBefore"
+        - $ref: "#/components/parameters/First"
+        - $ref: "#/components/parameters/Last"
+      responses:
+        "200":
+          description: List of tokens
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Page"
+        "401":
+          description: Unauthorized, authentication required
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: Project not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+                
+  /api/v1/projects/{project_id}/agents:
+    post:
+      security:
+        - UserTokenAuth: []
+      summary: Create a new agent for a specific project
+      description: |
+        Creates a new agent associated with the specified project.
+        This endpoint uses the project_id from the path parameter instead of inferring it from the token.
+        
+        Functionally equivalent to /api/v1/agents but with explicit project ID in the path.
+        
+        Required permissions: `create` on agent resource.
+      operationId: createAgentByPath
+      parameters:
+        - name: project_id
+          in: path
+          description: Project ID to create agent for
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        description: Agent object that needs to be created
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateAgent"
+      responses:
+        "201":
+          description: Agent created successfully
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AgentCreated"
+        "400":
+          description: Invalid input
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "500":
+          description: Internal server error
+          
+    get:
+      security:
+        - UserTokenAuth: []
+      summary: List agents for a specific project
+      description: |
+        Lists agents associated with the specified project.
+        This endpoint uses the project_id from the path parameter instead of inferring it from the token.
+        
+        Functionally equivalent to /api/v1/agents but with explicit project ID in the path.
+        
+        Required permissions: `list` on agent resource.
+      operationId: listAgentsByPath
+      parameters:
+        - name: project_id
+          in: path
+          description: Project ID to list agents for
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: filters
+          in: query
+          description: Filters for querying agents
+          required: false
+          style: form
+          explode: true
+          schema:
+            $ref: "#/components/schemas/AgentFilters"
+        - name: labels
+          in: query
+          description: Labels for querying agents (e.g., label.environment=production)
+          required: false
+          style: form
+          explode: true
+          schema:
+            type: object
+        - $ref: "#/components/parameters/First"
+        - $ref: "#/components/parameters/CursorAfter"
+        - $ref: "#/components/parameters/Last"
+        - $ref: "#/components/parameters/CursorBefore"
+      responses:
+        "200":
+          description: List of agents for the specified project
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Page"
+        "400":
+          description: Invalid input
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: Project not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "500":
+          description: Internal server error
+  
+  /api/v1/projects/{project_id}/issues:
+    post:
+      security:
+        - UserTokenAuth: []
+      summary: Create a new issue for a specific project
+      description: |
+        Creates a new issue associated with the specified project.
+        This endpoint uses the project_id from the path parameter instead of inferring it from the token.
+        
+        Functionally equivalent to /api/v1/issues but with explicit project ID in the path.
+        
+        Required permissions: `create` on issue resource.
+      operationId: createIssueByPath
+      parameters:
+        - name: project_id
+          in: path
+          description: Project ID to create issue for
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        description: Issue object that needs to be created
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateIssue"
+      responses:
+        "201":
+          description: Issue created successfully
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/IssueCreated"
+        "400":
+          description: Invalid input
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "500":
+          description: Internal server error
+          
+    get:
+      security:
+        - UserTokenAuth: []
+      summary: List issues for a specific project
+      description: |
+        Lists issues associated with the specified project.
+        This endpoint uses the project_id from the path parameter instead of inferring it from the token.
+        
+        Functionally equivalent to /api/v1/issues but with explicit project ID in the path.
+        
+        Required permissions: `list` on issue resource.
+      operationId: listIssuesByPath
+      parameters:
+        - name: project_id
+          in: path
+          description: Project ID to list issues for
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: filter.class
+          in: query
+          description: Filter issues by class
+          required: false
+          schema:
+            $ref: "#/components/schemas/IssueClass"
+        - name: filter.state
+          in: query
+          description: Filter issues by state
+          required: false
+          schema:
+            $ref: "#/components/schemas/IssueState"
+        - name: filter.priority
+          in: query
+          description: Filter issues by priority
+          required: false
+          schema:
+            $ref: "#/components/schemas/IssuePriority"
+        - name: include_ignored
+          in: query
+          description: Whether to include ignored issues
+          required: false
+          schema:
+            type: boolean
+            default: false
+        - $ref: "#/components/parameters/First"
+        - $ref: "#/components/parameters/CursorAfter"
+        - $ref: "#/components/parameters/Last"
+        - $ref: "#/components/parameters/CursorBefore"
+      responses:
+        "200":
+          description: List of issues for the specified project
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Page"
+        "400":
+          description: Invalid input
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: Project not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "500":
+          description: Internal server error
+  
+  /api/v1/projects/{project_id}/network_policies:
+    post:
+      security:
+        - UserTokenAuth: []
+      summary: Create a new network policy for a specific project
+      description: |
+        Creates a new network policy associated with the specified project.
+        This endpoint uses the project_id from the path parameter instead of inferring it from the token.
+        
+        Functionally equivalent to /api/v1/network_policies but with explicit project ID in the path.
+        
+        Required permissions: `create` on network_policy resource.
+      operationId: createNetworkPolicyByPath
+      parameters:
+        - name: project_id
+          in: path
+          description: Project ID to create network policy for
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        description: Network policy object that needs to be created
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateNetworkPolicy"
+      responses:
+        "201":
+          description: Network policy created successfully
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/NetworkPolicyCreated"
+        "400":
+          description: Invalid input
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "500":
+          description: Internal server error
+  
+  /api/v1/projects/{project_id}/network_policies/scope/{scope}:
+    get:
+      security:
+        - UserTokenAuth: []
+      summary: List network policies for a specific project and scope
+      description: |
+        Lists network policies for the specified project and scope.
+        This endpoint uses the project_id from the path parameter instead of inferring it from the token.
+        
+        Functionally equivalent to /api/v1/network_policies/scope/{scope} but with explicit project ID in the path.
+        
+        Required permissions: `list` on network_policy resource.
+      operationId: listNetworkPoliciesByScopeAndPath
+      parameters:
+        - name: project_id
+          in: path
+          description: Project ID to list network policies for
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: scope
+          in: path
+          description: Scope of network policies to return
+          required: true
+          schema:
+            $ref: "#/components/schemas/NetworkPolicyScope"
+        - $ref: "#/components/parameters/First"
+        - $ref: "#/components/parameters/CursorAfter"
+        - $ref: "#/components/parameters/Last"
+        - $ref: "#/components/parameters/CursorBefore"
+      responses:
+        "200":
+          description: List of network policies for the specified project and scope
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Page"
+        "400":
+          description: Invalid input
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: Project not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "500":
+          description: Internal server error
+  
+  /api/v1/projects/{project_id}/network_policies/merged:
+    get:
+      security:
+        - UserTokenAuth: []
+      summary: Get merged network policy for a specific project
+      description: |
+        Retrieves the merged network policy for the specified project.
+        This endpoint uses the project_id from the path parameter instead of inferring it from the token.
+        
+        Functionally equivalent to /api/v1/network_policies/merged but with explicit project ID in the path.
+        
+        Required permissions: `read` on network_policy resource.
+      operationId: getMergedNetworkPolicyByPath
+      parameters:
+        - name: project_id
+          in: path
+          description: Project ID to get merged network policy for
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: repository_id
+          in: query
+          description: Repository ID for context
+          required: false
+          schema:
+            type: string
+        - name: workflow_name
+          in: query
+          description: Workflow name for context
+          required: false
+          schema:
+            type: string
+        - name: format
+          in: query
+          description: Response format
+          required: false
+          schema:
+            type: string
+            enum: ["jibril"]
+      responses:
+        "200":
+          description: Merged network policy for the specified project
+          content:
+            application/json:
+              schema:
+                oneOf:
+                  - $ref: "#/components/schemas/MergedNetworkPolicy"
+                  - $ref: "#/components/schemas/JibrilFormatNetworkPolicy"
+        "400":
+          description: Invalid input
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: Project not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "500":
+          description: Internal server error
+  
+  /api/v1/projects/{project_id}/webhooks:
+    post:
+      security:
+        - UserTokenAuth: []
+      summary: Create a new webhook for a specific project
+      description: |
+        Creates a new webhook associated with the specified project.
+        This endpoint uses the project_id from the path parameter instead of inferring it from the token.
+        
+        Functionally equivalent to /api/v1/webhooks but with explicit project ID in the path.
+        
+        Required permissions: `create` on webhook resource.
+      operationId: createWebhookByPath
+      parameters:
+        - name: project_id
+          in: path
+          description: Project ID to create webhook for
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        description: Webhook object that needs to be created
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/WebhookCreate"
+      responses:
+        "201":
+          description: Webhook created successfully
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WebhookCreated"
+        "400":
+          description: Invalid input
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "500":
+          description: Internal server error
+          
+    get:
+      security:
+        - UserTokenAuth: []
+      summary: List webhooks for a specific project
+      description: |
+        Lists webhooks associated with the specified project.
+        This endpoint uses the project_id from the path parameter instead of inferring it from the token.
+        
+        Functionally equivalent to /api/v1/webhooks but with explicit project ID in the path.
+        
+        Required permissions: `list` on webhook resource.
+      operationId: listWebhooksByPath
+      parameters:
+        - name: project_id
+          in: path
+          description: Project ID to list webhooks for
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - $ref: "#/components/parameters/First"
+        - $ref: "#/components/parameters/CursorAfter"
+        - $ref: "#/components/parameters/Last"
+        - $ref: "#/components/parameters/CursorBefore"
+      responses:
+        "200":
+          description: List of webhooks for the specified project
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Page"
+        "400":
+          description: Invalid input
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: Project not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "500":
+          description: Internal server error
 
 components:
+  parameters:
+    CursorAfter:
+      name: after
+      in: query
+      description: Cursor for pagination - return items after this cursor (a string identifying the position)
+      required: false
+      schema:
+        type: string
+        description: A cursor reference to an item
+    
+    CursorBefore:
+      name: before
+      in: query
+      description: Cursor for pagination - return items before this cursor (a string identifying the position)
+      required: false
+      schema:
+        type: string
+        description: A cursor reference to an item
+    
+    First:
+      name: first
+      in: query
+      description: Limit result set to the first n items (maximum number of items to return)
+      required: false
+      schema:
+        type: integer
+        format: uint
+        minimum: 1
+        description: Maximum number of items to return
+    
+    Last:
+      name: last
+      in: query
+      description: Limit result set to the last n items (maximum number of items to return)
+      required: false
+      schema:
+        type: integer
+        format: uint
+        minimum: 1
+        description: Maximum number of items to return
+        
   securitySchemes:
     BearerAuth:
       type: http
       scheme: bearer
       bearerFormat: JWT
+      description: JWT Bearer token for user authorization
+      
+    UserTokenAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: JWT Bearer token for user authorization with role-based permissions
+      
     AgentTokenAuth:
       type: apiKey
       in: header
       name: X-Agent-Token
-      description: JWT token for agent authentication
+      description: JWT token for agent authentication, limited to agent-specific operations
+      
+    ProjectTokenAuth:
+      type: apiKey
+      in: header
+      name: X-Project-Token
+      description: Project API token for programmatic access with customizable permissions
 
   schemas:
     Error:
@@ -1000,33 +3218,401 @@ components:
         error:
           type: string
           example: "invalid event kind"
-    
-    IngestedEvent:
+          
+    # Project Setting Error Types
+    InvalidProjectSettingKey:
       type: object
+      description: Returned when a project setting key is invalid
+      required:
+        - error
+      properties:
+        error:
+          type: string
+          enum: ["invalid project setting key"]
+          
+    InvalidProjectSettingValue:
+      type: object
+      description: Returned when a project setting value is invalid
+      required:
+        - error
+      properties:
+        error:
+          type: string
+          enum: ["invalid project setting value"]
+          
+    ProjectSettingNotFound:
+      type: object
+      description: Returned when a requested project setting does not exist
+      required:
+        - error
+      properties:
+        error:
+          type: string
+          enum: ["project setting not found"]
+          
+    UnauthorizedProjectSetting:
+      type: object
+      description: Returned when a user does not have permission to access a project setting
+      required:
+        - error
+      properties:
+        error:
+          type: string
+          enum: ["permission denied for project setting"]
+          
+    # Issue Class Error Types
+    InvalidIssueClass:
+      type: object
+      description: Returned when an issue class is invalid
+      required:
+        - error
+      properties:
+        error:
+          type: string
+          enum: ["invalid issue class"]
+    
+    Permission:
+      type: string
+      enum: [create, read, update, delete, list]
+      description: |
+        A permission that can be assigned to a token or role.
+        - create: Allows creating new resources
+        - read: Allows reading/viewing existing resources
+        - update: Allows modifying existing resources
+        - delete: Allows removing resources
+        - list: Allows listing multiple resources
+    
+    Token:
+      type: object
+      description: Represents a project API token used for authentication
+      required:
+        - id
+        - project_id
+        - name
+        - permissions
+        - created_at
+        - updated_at
       properties:
         id:
           type: string
-    
-    Event:
+          format: uuid
+          description: Unique identifier for the token
+        project_id:
+          type: string
+          format: uuid
+          description: ID of the project this token belongs to
+        name:
+          type: string
+          description: Human-readable name for the token
+          maxLength: 64
+        permissions:
+          type: array
+          description: |
+            List of permissions granted to this token.
+            These determine what operations the token is allowed to perform.
+          items:
+            $ref: "#/components/schemas/Permission"
+        user_id:
+          type: string
+          format: uuid
+          description: ID of the user who created this token
+        created_at:
+          type: string
+          format: date-time
+          description: When the token was created
+        updated_at:
+          type: string
+          format: date-time
+          description: When the token was last updated
+        last_used:
+          type: string
+          format: date-time
+          description: When the token was last used for authentication
+          nullable: true
+        deleted_at:
+          type: string
+          format: date-time
+          description: When the token was deleted (if applicable)
+          nullable: true
+          
+    CreateToken:
       type: object
+      description: Request to create a new token
+      required:
+        - name
+      properties:
+        name:
+          type: string
+          description: Human-readable name for the token
+          maxLength: 64
+          example: "API Access Token"
+        permissions:
+          type: array
+          description: |
+            List of permissions to grant to this token.
+            If not provided, the token will be created with the same permissions as the creator.
+            A user cannot create a token with permissions they don't have themselves.
+          items:
+            $ref: "#/components/schemas/Permission"
+          example: ["read", "list"]
+          
+    TokenCreated:
+      type: object
+      description: Response when a token is successfully created
+      required:
+        - id
+        - project_id
+        - name
+        - token
+        - created_at
+      properties:
+        id:
+          type: string
+          format: uuid
+          description: Unique identifier for the token
+        project_id:
+          type: string
+          format: uuid
+          description: ID of the project this token belongs to
+        name:
+          type: string
+          description: Human-readable name for the token
+        permissions:
+          type: array
+          description: List of permissions granted to this token
+          items:
+            $ref: "#/components/schemas/Permission"
+        token:
+          type: string
+          description: |
+            The actual token value to use for authentication.
+            Important: This value is only returned once when the token is created.
+            It cannot be retrieved again later.
+        created_at:
+          type: string
+          format: date-time
+          description: When the token was created
+          
+    UpdateToken:
+      type: object
+      description: Request to update an existing token
+      minProperties: 1
+      properties:
+        name:
+          type: string
+          description: New human-readable name for the token
+          maxLength: 64
+          nullable: true
+          example: "Updated API Token"
+        permissions:
+          type: array
+          description: |
+            New list of permissions for this token.
+            A user cannot update a token to have permissions they don't have themselves.
+          items:
+            $ref: "#/components/schemas/Permission"
+          example: ["read", "list"]
+          
+    TokenUpdated:
+      type: object
+      description: Response when a token is successfully updated
+      required:
+        - id
+        - updated_at
+      properties:
+        id:
+          type: string
+          format: uuid
+          description: Unique identifier for the token
+        updated_at:
+          type: string
+          format: date-time
+          description: When the token was updated
+    
+    AuthorizationError:
+      type: object
+      required:
+        - error
+      properties:
+        error:
+          type: string
+          description: Authorization error message
+          example: "permission denied"
+        
+    PermissionDeniedError:
+      type: object
+      description: Error returned when a user attempts to perform an action they don't have permission for
+      allOf:
+        - $ref: "#/components/schemas/AuthorizationError"
+      properties:
+        error:
+          type: string
+          example: "permission denied: operation requires delete permission"
+      
+    UnauthorizedAgent:
+      allOf:
+        - $ref: "#/components/schemas/AuthorizationError"
+      description: Agent-specific authorization error
+      example:
+        error: "permission denied: agent access not authorized"
+
+    UnauthorizedIssue:
+      allOf:
+        - $ref: "#/components/schemas/AuthorizationError"
+      description: Issue-specific authorization error
+      example:
+        error: "permission denied: issue access not authorized"
+
+    UnauthorizedNetworkPolicy:
+      allOf:
+        - $ref: "#/components/schemas/AuthorizationError"
+      description: Network policy-specific authorization error
+      example:
+        error: "permission denied: network policy access not authorized"
+
+    UnauthorizedEvents:
+      allOf:
+        - $ref: "#/components/schemas/AuthorizationError"
+      description: Events-specific authorization error
+      example:
+        error: "permission denied: events access not authorized"
+
+    EventCreatedOrUpdated:
+      type: object
+      description: Response returned when an event is successfully created or updated
+      properties:
+        id:
+          type: string
+          description: The ID of the created or updated event
+        created:
+          type: boolean
+          description: Whether the event was newly created (true) or updated (false)
+        updated_at:
+          type: string
+          format: date-time
+          description: The timestamp when the event was created or updated
+
+    CreateOrUpdateEvent:
+      type: object
+      description: |
+        Event data used for creating or updating events.
+        Note that the agent_id field is not exposed in JSON responses.
       required:
         - id
         - kind
+        - data
       properties:
         id:
           type: string
-        agent_id:
-          type: string
-        data:
-          $ref: "#/components/schemas/Data"
+          description: Unique identifier for the event
         kind:
-          type: string
+          $ref: "#/components/schemas/EventKind"
+          description: Type of security or observability event
+        data:
+          $ref: "#/components/schemas/EventData"
+          description: Detailed event information including process, flow, and other data
         createdAt:
           type: string
           format: date-time
+          description: When the event was initially created
         updatedAt:
           type: string
           format: date-time
+          description: When the event was last updated
+
+    Event:
+      type: object
+      description: |
+        Complete event data returned in API responses.
+        Includes full agent information with context instead of just an agent ID.
+      required:
+        - id
+        - agent
+        - kind
+        - data
+      properties:
+        id:
+          type: string
+          description: Unique identifier for the event
+        agent:
+          $ref: "#/components/schemas/Agent"
+          description: Complete agent information including context
+        data:
+          $ref: "#/components/schemas/EventData"
+          description: Detailed event information including process, flow, and other data
+        kind:
+          $ref: "#/components/schemas/EventKind"
+          description: Type of security or observability event
+        createdAt:
+          type: string
+          format: date-time
+          description: When the event was initially created
+        updatedAt:
+          type: string
+          format: date-time
+          description: When the event was last updated
+          
+    EventKind:
+      type: string
+      description: Type of security or observability event
+      enum:
+        - drop_ip
+        - drop_domain
+        - flow
+        - capabilities_modification
+        - code_modification_through_procfs
+        - core_pattern_access
+        - cpu_fingerprint
+        - credentials_files_access
+        - filesystem_fingerprint
+        - java_debug_lib_load
+        - java_instrument_lib_load
+        - machine_fingerprint
+        - os_fingerprint
+        - os_network_fingerprint
+        - os_status_fingerprint
+        - package_repo_config_modification
+        - pam_config_modification
+        - sched_debug_access
+        - shell_config_modification
+        - ssl_certificate_access
+        - sudoers_modification
+        - sysrq_access
+        - unprivileged_bpf_config_access
+        - global_shlib_modification
+        - environ_read_from_procfs
+        - binary_self_deletion
+        - crypto_miner_files
+        - auth_logs_tamper
+        - binary_executed_by_loader
+        - code_on_the_fly
+        - data_encoder_exec
+        - denial_of_service_tools
+        - exec_from_unusual_dir
+        - file_attribute_change
+        - hidden_elf_exec
+        - interpreter_shell_spawn
+        - net_filecopy_tool_exec
+        - net_mitm_tool_exec
+        - net_scan_tool_exec
+        - net_sniff_tool_exec
+        - net_suspicious_tool_exec
+        - net_suspicious_tool_shell
+        - passwd_usage
+        - runc_suspicious_exec
+        - webserver_exec
+        - webserver_shell_exec
+        - crypto_miner_execution
+        - adult_domain_access
+        - badware_domain_access
+        - dyndns_domain_access
+        - fake_domain_access
+        - gambling_domain_access
+        - piracy_domain_access
+        - plaintext_communication
+        - threat_domain_access
+        - tracking_domain_access
+        - vpnlike_domain_access
 
     DroppedIP:
       type: object
@@ -1050,73 +3636,8 @@ components:
           $ref: "#/components/schemas/Node"
         properties:
           $ref: "#/components/schemas/Properties"
-    
-    GitHubContext:
-      type: object
-      required:
-        - job
-        - run_id
-        - workflow
-      properties:
-        id:
-          type: string
-          description: This unique ID is generated by API, so it is possible to leave blank.
-        action:
-          type: string
-        actor:
-          type: string
-        actor_id:
-          type: string
-        event_name:
-          type: string
-        job:
-          type: string
-        ref:
-          type: string
-        ref_name:
-          type: string
-        ref_protected:
-          type: boolean
-        ref_type:
-          type: string
-        repository:
-          type: string
-        repository_id:
-          type: string
-        repository_owner:
-          type: string
-        repository_owner_id:
-          type: string
-        run_attempt:
-          type: string
-        run_id:
-          type: string
-        run_number:
-          type: string
-        runner_arch:
-          type: string
-        runner_os:
-          type: string
-        server_url:
-          type: string
-        sha:
-          type: string
-        triggering_actor:
-          type: string
-        workflow:
-          type: string
-        workflow_ref:
-          type: string
-        workflow_sha:
-          type: string
-        workspace:
-          type: string
-        created_at:
-          type: string
-        update_at:
-          type: string
-    
-    Data:
+
+    EventData:
       type: object
       properties:
         dropped:
@@ -1146,7 +3667,7 @@ components:
         note:
           type: string
           nullable: true
-    
+
     FullInfo:
       type: object
       properties:
@@ -1162,7 +3683,7 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/Process"
-    
+
     FlowSimple:
       type: object
       properties:
@@ -1180,7 +3701,7 @@ components:
           $ref: "#/components/schemas/Node"
         settings:
           $ref: "#/components/schemas/Settings"
-    
+
     Flow:
       type: object
       properties:
@@ -1200,7 +3721,7 @@ components:
           $ref: "#/components/schemas/Properties"
         settings:
           $ref: "#/components/schemas/Settings"
-    
+
     Settings:
       type: object
       properties:
@@ -1212,7 +3733,7 @@ components:
           type: string
         ended_by:
           type: string
-    
+
     Properties:
       type: object
       properties:
@@ -1234,7 +3755,7 @@ components:
           type: boolean
         terminated:
           type: boolean
-    
+
     ICMP:
       type: object
       properties:
@@ -1242,7 +3763,7 @@ components:
           type: string
         type:
           type: string
-    
+
     Node:
       type: object
       properties:
@@ -1256,7 +3777,7 @@ components:
             type: string
         port:
           type: integer
-    
+
     Process:
       type: object
       properties:
@@ -1288,7 +3809,7 @@ components:
           type: string
         prev_loader:
           type: string
-    
+
     EventHead:
       type: object
       properties:
@@ -1310,67 +3831,86 @@ components:
           type: string
         importance:
           type: string
-    
-    AgentKind:
-      type: string
-      enum:
-        - github
-        - kubernetes
-    
+
     AgentLabels:
       type: object
       additionalProperties:
         type: string
-    
-    AgentKubernetesContext:
-      type: object
-      required:
-        - cluster
-        - namespace
-      properties:
-        cluster:
-          type: string
-        namespace:
-          type: string
-    
+      description: |
+        Labels to categorize and organize agents. Labels are subject to the following constraints:
+        - Maximum 64 labels per agent
+        - Label keys: 
+          - Limited to 63 characters maximum
+          - Must start and end with alphanumeric characters
+          - Can include hyphens and underscores in the middle
+          - Must match regex: ^[a-zA-Z0-9][-_a-zA-Z0-9]*[a-zA-Z0-9]$|^[a-zA-Z0-9]$
+        - Label values:
+          - Limited to 1024 characters maximum
+          - Must start with alphanumeric characters
+          - Can include alphanumeric characters, hyphens, underscores, periods, forward slashes, and spaces
+          - Must match regex: ^[a-zA-Z0-9][-_a-zA-Z0-9/. ]*$
+      example:
+        environment: production
+        region: us-west-1
+        team: platform
+
     Agent:
       type: object
+      description: |
+        Agent data including basic system information and context-specific
+        information for GitHub or Kubernetes environments
       properties:
         id:
           type: string
+          description: Unique identifier for the agent
         project_id:
           type: string
+          description: Project the agent belongs to
         os:
           type: string
+          description: Operating system (e.g., linux, darwin, windows)
         arch:
           type: string
+          description: System architecture (e.g., amd64, arm64)
         hostname:
           type: string
+          description: Agent host name
         version:
           type: string
+          description: Agent software version
         ip:
           type: string
+          description: IP address of the agent
         machine_id:
           type: string
+          description: Unique machine identifier
         labels:
           $ref: "#/components/schemas/AgentLabels"
+          description: User-defined labels for categorizing agents
         kind:
           $ref: "#/components/schemas/AgentKind"
+          description: Type of agent environment (github or kubernetes)
         github_context:
-          $ref: "#/components/schemas/GitHubContext"
+          $ref: "#/components/schemas/AgentGithubContext"
+          description: GitHub-specific context (present when kind is github)
         kubernetes_context:
           $ref: "#/components/schemas/AgentKubernetesContext"
-        network_policy:
-          $ref: "#/components/schemas/MergedNetworkPolicy"
+          description: Kubernetes-specific context (present when kind is kubernetes)
         active:
           type: boolean
+          description: Whether the agent is currently active
         created_at:
           type: string
           format: date-time
+          description: When the agent was created
         updated_at:
           type: string
           format: date-time
-    
+          description: When the agent was last updated
+          $ref: "#/components/schemas/AgentKubernetesContext"
+        network_policy:
+          $ref: "#/components/schemas/MergedNetworkPolicy"
+
     CreateAgent:
       type: object
       required:
@@ -1400,10 +3940,10 @@ components:
         kind:
           $ref: "#/components/schemas/AgentKind"
         github_context:
-          $ref: "#/components/schemas/GitHubContext"
+          $ref: "#/components/schemas/AgentGithubContext"
         kubernetes_context:
           $ref: "#/components/schemas/AgentKubernetesContext"
-    
+
     UpdateAgent:
       type: object
       properties:
@@ -1426,7 +3966,33 @@ components:
         machine_id:
           type: string
           nullable: true
-    
+        kind:
+          type: string
+          nullable: true
+        github_context:
+          $ref: '#/components/schemas/AgentGithubContext'
+        kubernetes_context:
+          $ref: '#/components/schemas/AgentKubernetesContext'
+        vanilla_context:
+          $ref: '#/components/schemas/AgentVanillaContext'
+
+    AgentVanillaContext:
+      type: object
+      properties:
+        id:
+          type: string
+        job:
+          type: string
+        runner_os:
+          type: string
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+
+
     AgentCreated:
       type: object
       required:
@@ -1442,31 +4008,72 @@ components:
         network_policy:
           $ref: "#/components/schemas/MergedNetworkPolicy"
           description: Merged network policy for this agent based on its context.
-    
+
     Page:
       type: object
+      description: |
+        Generic paginated response that contains a list of items and pagination information.
+        This structure is used for all paginated list endpoints in the API.
+        
+        The actual type of items in the 'items' array depends on the endpoint:
+        - For /api/v1/tokens: The items are Token objects
+        - For /api/v1/agents: The items are Agent objects
+        - For /api/v1/issues: The items are Issue objects
+        - For /api/v1/network_policies/scope/{scope}: The items are NetworkPolicy objects
+        - For /api/v1/issues/{id}/actions: The items are IssueActionHistory objects
+      required:
+        - items
+        - pageInfo
       properties:
         items:
           type: array
+          description: |
+            List of items in the current page. The item type depends on the endpoint:
+            - For /api/v1/tokens: The items are Token objects
+            - For /api/v1/agents: The items are Agent objects
+            - For /api/v1/issues: The items are Issue objects
+            - For /api/v1/network_policies/scope/{scope}: The items are NetworkPolicy objects
+            - For /api/v1/issues/{id}/actions: The items are IssueActionHistory objects
+            - For /api/v1/webhooks: The items are Webhook objects
           items:
             type: object
-            description: Generic item
+            description: Generic item - actual type depends on the endpoint
+            oneOf:
+              - $ref: "#/components/schemas/Token"
+              - $ref: "#/components/schemas/Agent"
+              - $ref: "#/components/schemas/Issue"
+              - $ref: "#/components/schemas/NetworkPolicy"
+              - $ref: "#/components/schemas/IssueActionHistory"
+              - $ref: "#/components/schemas/Webhook"
         pageInfo:
-          $ref: '#/components/schemas/PageInfo'
-    
+          $ref: "#/components/schemas/PageInfo"
+
     PageInfo:
       type: object
+      description: |
+        Contains information about pagination for use with cursor-based pagination.
+        To paginate forward, use the endCursor as the after parameter.
+        To paginate backward, use the startCursor as the before parameter.
+      required:
+        - hasNextPage
+        - hasPrevPage
       properties:
         hasNextPage:
           type: boolean
+          description: Whether there are more items after the end cursor
         endCursor:
           type: string
+          description: The cursor to continue paginating forwards (use this as the 'after' parameter)
           nullable: true
+          example: "MTY0MjUyOTkzMDAwMDAwMDAwMA=="
         hasPrevPage:
           type: boolean
+          description: Whether there are more items before the start cursor
         startCursor:
           type: string
+          description: The cursor to continue paginating backwards (use this as the 'before' parameter)
           nullable: true
+          example: "MTY0MjUyOTkzMDAwMDAwMDAwMA=="
     
     AgentFilters:
       type: object
@@ -1493,56 +4100,93 @@ components:
         kind:
           $ref: "#/components/schemas/AgentKind"
           description: Kind of agent
-    
+
     # Issue-related schemas
     IssueState:
       type: string
+      description: |
+        Defines the state of an issue in the system:
+        - allowed: Issue has been reviewed and explicitly allowed
+        - blocked: Issue has been reviewed and explicitly blocked
       enum:
         - allowed
         - blocked
-    
+
     IssuePriority:
       type: string
+      description: |
+        Priority level of an issue, indicating its severity and urgency:
+        - low: Minimal impact, non-urgent
+        - medium: Moderate impact, should be addressed
+        - high: Significant impact, requires attention
+        - critical: Severe impact, requires immediate attention
       enum:
         - low
         - medium
         - high
         - critical
-    
+
     IssueClass:
       type: string
+      description: |
+        Classification of the issue by type of security concern:
+        - network_exfiltration: Suspicious outbound network traffic that may indicate data exfiltration
+        - crypto_miner: Detection of cryptocurrency mining activity
       enum:
         - network_exfiltration
         - crypto_miner
-    
+
     IssueLabels:
       type: object
       additionalProperties:
         type: string
+      description: |
+        Labels to categorize and organize issues. Labels are subject to the following constraints:
+        - Maximum 64 labels per issue
+        - Label keys: 
+          - Limited to 63 characters maximum
+          - Must start and end with alphanumeric characters
+          - Can include hyphens and underscores in the middle
+          - Must match regex: ^[a-zA-Z0-9][-_a-zA-Z0-9]*[a-zA-Z0-9]$|^[a-zA-Z0-9]$
+        - Label values:
+          - Limited to 1024 characters maximum
+          - Must start with alphanumeric characters
+          - Can include alphanumeric characters, hyphens, underscores, periods, forward slashes, and spaces
+          - Must match regex: ^[a-zA-Z0-9][-_a-zA-Z0-9/. ]*$
       example:
         severity: high
         type: bug
         area: security
-    
+
     Issue:
       type: object
+      description: |
+        Complete Issue object containing full details about a security or compliance issue.
+        Issues are associated with one or more events and can have network policy rules applied to them.
       properties:
         id:
           type: string
           format: uuid
+          description: Unique identifier for the issue
         class:
           $ref: "#/components/schemas/IssueClass"
+          description: Classification of the issue (e.g., network_exfiltration, crypto_miner)
         description:
           type: string
+          description: Human-readable description of the issue
         state:
           $ref: "#/components/schemas/IssueState"
+          description: Current state of the issue (allowed or blocked)
         priority:
           $ref: "#/components/schemas/IssuePriority"
+          description: Priority level of the issue (low, medium, high, critical)
         labels:
           $ref: "#/components/schemas/IssueLabels"
+          description: User-defined labels for categorizing and filtering issues
         ignored:
           type: boolean
           default: false
+          description: Whether this issue is currently being ignored
         ignored_reason:
           type: string
           description: Reason for ignoring the issue (populated when ignored=true)
@@ -1555,6 +4199,31 @@ components:
         ignored_at:
           type: string
           format: date-time
+          description: Timestamp when the issue was ignored
+          nullable: true
+        policy_scope:
+          $ref: "#/components/schemas/NetworkPolicyScope"
+          description: Scope of the network policy applied to this issue
+          nullable: true
+        network_policy_id:
+          type: string
+          format: uuid
+          description: ID of the network policy associated with this issue
+          nullable: true
+        network_policy_rule_id:
+          type: string
+          format: uuid
+          description: ID of the specific network policy rule associated with this issue
+          nullable: true
+        last_action_by:
+          type: string
+          format: uuid
+          description: ID of the user who last performed an action on this issue
+          nullable: true
+        last_action_at:
+          type: string
+          format: date-time
+          description: Timestamp of the last action performed on this issue
           nullable: true
         events:
           type: array
@@ -1564,14 +4233,17 @@ components:
         created_at:
           type: string
           format: date-time
+          description: Timestamp when the issue was created
         updated_at:
           type: string
           format: date-time
+          description: Timestamp when the issue was last updated
         deleted_at:
           type: string
           format: date-time
+          description: Timestamp when the issue was deleted (if applicable)
           nullable: true
-    
+
     CreateIssue:
       type: object
       required:
@@ -1593,10 +4265,12 @@ components:
           $ref: "#/components/schemas/IssueLabels"
         event_ids:
           type: array
+          minItems: 1
+          description: Array of event IDs to associate with this issue (at least one is required)
           items:
             type: string
             format: uuid
-    
+
     UpdateIssue:
       type: object
       properties:
@@ -1628,10 +4302,12 @@ components:
           nullable: true
         event_ids:
           type: array
+          description: Array of event IDs to associate with this issue. If provided, it cannot be empty as issues must always have at least one event. If not provided, existing events will remain unchanged.
+          minItems: 1
           items:
             type: string
             format: uuid
-    
+
     IssueCreated:
       type: object
       properties:
@@ -1644,7 +4320,7 @@ components:
         updated_at:
           type: string
           format: date-time
-    
+
     IssueUpdated:
       type: object
       properties:
@@ -1654,7 +4330,77 @@ components:
         updated_at:
           type: string
           format: date-time
-    
+
+    # Issue action schemas
+    IssueActionType:
+      type: string
+      enum:
+        - allow
+        - block
+      description: Type of action to perform on an issue
+
+    IssueAction:
+      type: object
+      required:
+        - scope
+        - reason
+      properties:
+        scope:
+          $ref: "#/components/schemas/NetworkPolicyScope"
+          description: Scope level at which to apply the network policy rule
+        reason:
+          type: string
+          description: User-provided reason for the action
+
+    IssueActionPerformed:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        state:
+          $ref: "#/components/schemas/IssueState"
+        network_policy_id:
+          type: string
+          format: uuid
+        network_policy_rule:
+          $ref: "#/components/schemas/NetworkPolicyRule"
+        updated_at:
+          type: string
+          format: date-time
+
+    IssueActionHistory:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        issue_id:
+          type: string
+          format: uuid
+        action_type:
+          $ref: "#/components/schemas/IssueActionType"
+        scope:
+          $ref: "#/components/schemas/NetworkPolicyScope"
+        reason:
+          type: string
+        user_id:
+          type: string
+          format: uuid
+        network_policy_id:
+          type: string
+          format: uuid
+        network_policy_rule_id:
+          type: string
+          format: uuid
+        destination_type:
+          $ref: "#/components/schemas/NetworkPolicyRuleType"
+        destination_value:
+          type: string
+        created_at:
+          type: string
+          format: date-time
+
     # Network policy schemas
     NetworkPolicyScope:
       type: string
@@ -1714,7 +4460,7 @@ components:
         resolve_policy:
           $ref: "#/components/schemas/NetworkPolicyType"
           description: Default policy for DNS resolution
-    
+
     NetworkPolicyRule:
       type: object
       properties:
@@ -1737,7 +4483,7 @@ components:
         updated_at:
           type: string
           format: date-time
-    
+
     CreateNetworkPolicyRule:
       type: object
       required:
@@ -1752,7 +4498,7 @@ components:
           description: CIDR block or domain pattern
         action:
           $ref: "#/components/schemas/NetworkPolicyType"
-    
+
     UpdateNetworkPolicyRule:
       type: object
       properties:
@@ -1761,7 +4507,7 @@ components:
           description: CIDR block or domain pattern
         action:
           $ref: "#/components/schemas/NetworkPolicyType"
-    
+
     NetworkPolicyRuleCreated:
       type: object
       properties:
@@ -1774,7 +4520,7 @@ components:
         updated_at:
           type: string
           format: date-time
-    
+
     NetworkPolicyRuleUpdated:
       type: object
       properties:
@@ -1784,7 +4530,7 @@ components:
         updated_at:
           type: string
           format: date-time
-    
+
     NetworkPolicy:
       type: object
       properties:
@@ -1811,7 +4557,7 @@ components:
         updated_at:
           type: string
           format: date-time
-    
+
     CreateNetworkPolicy:
       type: object
       required:
@@ -1832,7 +4578,7 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/CreateNetworkPolicyRule"
-    
+
     UpdateNetworkPolicy:
       type: object
       required:
@@ -1840,7 +4586,7 @@ components:
       properties:
         config:
           $ref: "#/components/schemas/NetworkPolicyConfig"
-    
+
     NetworkPolicyCreated:
       type: object
       properties:
@@ -1853,7 +4599,7 @@ components:
         updated_at:
           type: string
           format: date-time
-    
+
     NetworkPolicyUpdated:
       type: object
       properties:
@@ -1863,7 +4609,7 @@ components:
         updated_at:
           type: string
           format: date-time
-    
+
     MergedNetworkPolicy:
       type: object
       properties:
@@ -1882,3 +4628,414 @@ components:
         workflow_policy:
           $ref: "#/components/schemas/NetworkPolicy"
           nullable: true
+          
+    JibrilFormatNetworkPolicy:
+      type: object
+      description: Network policy in Jibril format
+      properties:
+        network_policy:
+          type: object
+          properties:
+            cidr_mode:
+              type: string
+              enum: [both, alert, enforce, bypass]
+              description: CIDR mode in Jibril format (both, alert, enforce, bypass)
+            cidr_policy:
+              type: string
+              enum: [allow, deny]
+              description: CIDR policy type
+            resolve_mode:
+              type: string
+              enum: [both, alert, enforce, bypass]
+              description: Resolve mode in Jibril format (both, alert, enforce, bypass)
+            resolve_policy:
+              type: string
+              enum: [allow, deny]
+              description: Resolve policy type
+            rules:
+              type: array
+              items:
+                oneOf:
+                  - type: object
+                    properties:
+                      cidr:
+                        type: string
+                        description: CIDR rule value
+                      policy:
+                        type: string
+                        enum: [allow, deny]
+                        description: Rule action
+                    required: [cidr, policy]
+                  - type: object
+                    properties:
+                      domain:
+                        type: string
+                        description: Domain rule value
+                      policy:
+                        type: string
+                        enum: [allow, deny]
+                        description: Rule action
+                    required: [domain, policy]
+
+    WebhookCreate:
+      type: object
+      required:
+        - name
+        - url
+      properties:
+        name:
+          type: string
+          description: Name of the webhook
+        url:
+          type: string
+          format: uri
+          description: URL to send webhook requests to
+        kind:
+          $ref: "#/components/schemas/WebhookKind"
+          description: Kind of webhook
+
+    Webhook:
+      type: object
+      description: Webhook configuration for sending notifications
+      properties:
+        id:
+          type: string
+          format: uuid
+          description: Unique identifier for the webhook
+        name:
+          type: string
+          description: Name of the webhook
+        url:
+          type: string
+          format: uri
+          description: URL to send webhook requests to
+        kind:
+          $ref: "#/components/schemas/WebhookKind"
+          description: Kind of webhook (e.g., slack)
+        created_at:
+          type: string
+          format: date-time
+          description: Timestamp when the webhook was created
+        updated_at:
+          type: string
+          format: date-time
+          description: Timestamp when the webhook was last updated
+
+    WebhookCreated:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+          description: Unique identifier for the webhook
+        name:
+          type: string
+          description: Name of the webhook
+        url:
+          type: string
+          format: uri
+          description: URL to send webhook requests to
+        kind:
+          $ref: "#/components/schemas/WebhookKind"
+          description: Kind of webhook
+
+    WebhookUpdated:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+          description: Unique identifier for the webhook
+        name:
+          type: string
+          description: Name of the webhook
+        url:
+          type: string
+          format: uri
+          description: URL to send webhook requests to
+        kind:
+          $ref: "#/components/schemas/WebhookKind"
+          description: Kind of webhook
+        created_at:
+          type: string
+          format: date-time
+          description: When the webhook was created
+
+    WebhookUpdate:
+      type: object
+      properties:
+        name:
+          type: string
+          description: New name for the webhook
+          nullable: true
+        url:
+          type: string
+          format: uri
+          description: New URL for the webhook
+          nullable: true
+        kind:
+          $ref: "#/components/schemas/WebhookKind"
+          description: New kind of webhook
+          nullable: true
+
+    UnauthorizedWebhook:
+      allOf:
+        - $ref: "#/components/schemas/AuthorizationError"
+      description: Webhook-specific authorization error
+      example:
+        error: "permission denied: webhook access not authorized"
+
+    WebhookKind:
+      type: string
+      enum:
+        - slack
+
+    AgentGithubContext:
+      type: object
+      description: GitHub-specific context for agents running in GitHub Actions
+      required:
+        - job
+        - run_id
+        - workflow
+        - repository
+        - repository_id
+      properties:
+        action:
+          type: string
+          description: GitHub Action being executed
+        actor:
+          type: string
+          description: GitHub user that triggered the workflow
+        actor_id:
+          type: string
+          description: GitHub user ID that triggered the workflow
+        event_name:
+          type: string
+          description: Name of the event that triggered the workflow
+        job:
+          type: string
+          description: Name of the job being executed
+        ref:
+          type: string
+          description: Git reference that triggered the workflow
+        ref_name:
+          type: string
+          description: Short name of the reference
+        ref_protected:
+          type: boolean
+          description: Whether the reference is protected
+        ref_type:
+          type: string
+          description: Type of reference (branch, tag)
+        repository:
+          type: string
+          description: Full name of the repository (e.g., owner/repo)
+        repository_id:
+          type: string
+          description: Repository ID
+        repository_owner:
+          type: string
+          description: Owner of the repository
+        repository_owner_id:
+          type: string
+          description: ID of the repository owner
+        run_id:
+          type: string
+          description: Unique identifier for the workflow run
+        workflow:
+          type: string
+          description: Name of the workflow
+        workflow_ref:
+          type: string
+          description: Reference to the workflow file
+        
+    AgentKubernetesContext:
+      type: object
+      description: Kubernetes-specific context for agents running in Kubernetes environments
+      required:
+        - cluster
+        - namespace
+      properties:
+        cluster:
+          type: string
+          description: Name of the Kubernetes cluster
+        namespace:
+          type: string
+          description: Kubernetes namespace where the agent is running
+
+    AgentKind:
+      type: string
+      description: Type of environment where the agent is running
+      enum:
+        - github
+        - kubernetes
+
+    ProjectCounters:
+      type: object
+      properties:
+        repository_count:
+          type: integer
+        workflow_count:
+          type: integer
+        
+    ProjectSetting:
+      type: object
+      description: |
+        Represents a project setting that configures behavior for a project.
+        Project settings allow customizing various aspects of project functionality.
+      required:
+        - id
+        - key
+        - value
+        - created_at
+        - updated_at
+      properties:
+        id:
+          type: string
+          format: uuid
+          description: Unique identifier for the project setting
+        key:
+          type: string
+          description: The setting key, which determines what aspect of the project is being configured
+          example: "webhook_enabled_issue_classes"
+        value:
+          type: object
+          description: The setting value, which can be any valid JSON value
+        created_at:
+          type: string
+          format: date-time
+          description: When the setting was created
+        updated_at:
+          type: string
+          format: date-time
+          description: When the setting was last updated
+    
+    ProjectSettingCreate:
+      type: object
+      description: |
+        Represents a request to create a new project setting.
+      required:
+        - key
+        - value
+      properties:
+        key:
+          type: string
+          description: |
+            The setting key, which determines what aspect of the project is being configured.
+            Must be one of the valid setting keys.
+          example: "webhook_enabled_issue_classes"
+        value:
+          type: object
+          description: |
+            The setting value, which must be a valid JSON value.
+            The structure depends on the key being set.
+          example: {"classes": ["network_exfiltration", "crypto_miner"]}
+    
+    ProjectSettingUpdate:
+      type: object
+      description: |
+        Represents a request to update an existing project setting.
+      required:
+        - value
+      properties:
+        value:
+          type: object
+          description: |
+            The new setting value, which must be a valid JSON value.
+            The structure depends on the key being updated.
+          example: {"classes": ["network_exfiltration"]}
+    
+    ProjectSettingCreated:
+      type: object
+      description: |
+        Response returned after successfully creating a project setting.
+      required:
+        - id
+        - key
+        - created_at
+        - updated_at
+      properties:
+        id:
+          type: string
+          format: uuid
+          description: Unique identifier for the created project setting
+        key:
+          type: string
+          description: The setting key that was created
+          example: "webhook_enabled_issue_classes"
+        created_at:
+          type: string
+          format: date-time
+          description: When the setting was created
+        updated_at:
+          type: string
+          format: date-time
+          description: Same as created_at for a new setting
+    
+    ProjectSettingUpdated:
+      type: object
+      description: |
+        Response returned after successfully updating a project setting.
+      required:
+        - id
+        - key
+        - updated_at
+      properties:
+        id:
+          type: string
+          format: uuid
+          description: Unique identifier for the updated project setting
+        key:
+          type: string
+          description: The setting key that was updated
+          example: "webhook_enabled_issue_classes"
+        updated_at:
+          type: string
+          format: date-time
+          description: When the setting was updated
+    
+    ProjectSettingPage:
+      type: object
+      description: |
+        A paginated list of project settings with cursor-based navigation.
+      required:
+        - items
+      properties:
+        items:
+          type: array
+          description: The list of project settings matching the query
+          items:
+            $ref: '#/components/schemas/ProjectSetting'
+        page_info:
+          type: object
+          description: Information about the pagination status
+          properties:
+            has_next_page:
+              type: boolean
+              description: Whether there are more items after the current page
+            has_previous_page:
+              type: boolean
+              description: Whether there are more items before the current page
+            start_cursor:
+              type: string
+              description: The cursor pointing to the first item in the current page
+            end_cursor:
+              type: string
+              description: The cursor pointing to the last item in the current page
+    
+    WebhookEnabledIssueClasses:
+      type: object
+      description: |
+        Represents the issue classes that are enabled for webhook notifications.
+        If not specified, all issue classes will receive webhook notifications by default.
+      properties:
+        classes:
+          type: array
+          description: |
+            List of issue classes enabled for webhook notifications.
+            If null or empty, behavior depends on the context:
+            - null: All classes are enabled (default)
+            - empty array: No classes are enabled
+          items:
+            $ref: '#/components/schemas/IssueClass'
+          example: ["network_exfiltration", "crypto_miner"]

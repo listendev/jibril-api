@@ -10,55 +10,79 @@ import (
 	"net/http"
 	"net/http/httputil"
 	"strings"
-
-	"github.com/go-playground/form/v4"
 )
 
 type Client struct {
-	BaseClient  *http.Client
-	BaseURL     string
-	JWT         string
-	AgentToken  string
-	Debug       bool
-	formEncoder *form.Encoder
+	BaseClient *http.Client
+	BaseURL    string
+	AuthToken  string // Generic authentication token
+	TokenType  TokenType
+	Debug      bool
 }
 
-func New(baseURL, pat string) *Client {
-	return &Client{
-		BaseClient:  http.DefaultClient,
-		BaseURL:     baseURL,
-		JWT:         pat,
-		formEncoder: form.NewEncoder(),
+type TokenType int
+
+const (
+	TokenTypeNone TokenType = iota
+	TokenTypeUser
+	TokenTypeAgent
+	TokenTypeProject
+)
+
+func New(baseURL, token string) *Client {
+	client := &Client{
+		BaseClient: http.DefaultClient,
+		BaseURL:    baseURL,
+		AuthToken:  token,
 	}
+
+	// If a token is provided, assume it's a user token
+	if token != "" {
+		client.TokenType = TokenTypeUser
+	}
+
+	return client
 }
 
 // Clone creates a copy of the client.
 func (c *Client) Clone() *Client {
 	return &Client{
-		BaseClient:  c.BaseClient,
-		BaseURL:     c.BaseURL,
-		JWT:         c.JWT,
-		AgentToken:  c.AgentToken,
-		Debug:       c.Debug,
-		formEncoder: form.NewEncoder(),
+		BaseClient: c.BaseClient,
+		BaseURL:    c.BaseURL,
+		AuthToken:  c.AuthToken,
+		TokenType:  c.TokenType,
+		Debug:      c.Debug,
 	}
 }
 
-// SetToken sets the JWT token for authentication.
-func (c *Client) SetToken(token string) {
-	c.JWT = token
+// WithUserToken configures the client to use a user token for authentication.
+func (c *Client) WithUserToken(token string) *Client {
+	client := c.Clone()
+	client.AuthToken = token
+	client.TokenType = TokenTypeUser
+	return client
 }
 
-// SetAgentToken sets the agent token for authentication.
-func (c *Client) SetAgentToken(token string) {
-	c.AgentToken = token
-}
-
-// WithAgentToken creates a new client with the specified agent token.
+// WithAgentToken configures the client to use an agent token for authentication.
 func (c *Client) WithAgentToken(token string) *Client {
 	client := c.Clone()
-	client.SetAgentToken(token)
+	client.AuthToken = token
+	client.TokenType = TokenTypeAgent
 	return client
+}
+
+// WithProjectToken configures the client to use a project token for authentication.
+func (c *Client) WithProjectToken(token string) *Client {
+	client := c.Clone()
+	client.AuthToken = token
+	client.TokenType = TokenTypeProject
+	return client
+}
+
+// SetAuth is a generic method to set both the token and type at once.
+func (c *Client) SetAuth(token string, tokenType TokenType) {
+	c.AuthToken = token
+	c.TokenType = tokenType
 }
 
 func (c *Client) do(ctx context.Context, out any, method, path string, body any) error {
@@ -78,12 +102,23 @@ func (c *Client) do(ctx context.Context, out any, method, path string, body any)
 		return fmt.Errorf("create request: %w", err)
 	}
 
-	if c.JWT != "" {
-		req.Header.Set("Authorization", "Bearer "+c.JWT)
-	}
-
-	if c.AgentToken != "" {
-		req.Header.Set("X-Agent-Token", c.AgentToken)
+	// Set auth headers based on token type
+	if c.AuthToken != "" {
+		switch c.TokenType {
+		case TokenTypeUser:
+			// Check if it's already a bearer token
+			if strings.HasPrefix(c.AuthToken, "Bearer ") {
+				req.Header.Set("Authorization", c.AuthToken)
+			} else {
+				req.Header.Set("Authorization", "Bearer "+c.AuthToken)
+			}
+		case TokenTypeAgent:
+			req.Header.Set("X-Agent-Token", c.AuthToken)
+		case TokenTypeProject:
+			req.Header.Set("X-Project-Token", c.AuthToken)
+		case TokenTypeNone:
+			// No headers added for TokenTypeNone
+		}
 	}
 
 	if c.Debug {

@@ -6,7 +6,7 @@ import (
 	"net"
 	"time"
 
-	"github.com/listendev/jibril-server/types/errs"
+	"github.com/listendev/jibril-api/types/errs"
 )
 
 // Network policy error constants.
@@ -20,7 +20,9 @@ const (
 	ErrInvalidNetworkPolicyCIDRPolicy    = errs.InvalidArgumentError("invalid network policy CIDR policy")
 	ErrInvalidNetworkPolicyResolveMode   = errs.InvalidArgumentError("invalid network policy resolve mode")
 	ErrInvalidNetworkPolicyResolvePolicy = errs.InvalidArgumentError("invalid network policy resolve policy")
-	ErrNetworkPolicyUnauthorized         = errs.UnauthorizedError("permission denied")
+	ErrInvalidNetworkPolicyID            = errs.InvalidArgumentError("invalid network policy ID")
+	ErrInvalidNetworkPolicyRuleID        = errs.InvalidArgumentError("invalid network policy rule ID")
+	ErrUnauthorizedNetworkPolicy         = errs.UnauthorizedError("permission denied")
 	ErrNetworkPolicyNotFound             = errs.NotFoundError("network policy not found")
 	ErrNetworkPolicyRuleNotFound         = errs.NotFoundError("network policy rule not found")
 	ErrNetworkPolicyAlreadyExists        = errs.ConflictError("network policy already exists")
@@ -267,6 +269,60 @@ type MergedNetworkPolicy struct {
 	WorkflowPolicy *WorkflowNetworkPolicy `json:"workflow_policy,omitempty"`
 }
 
+// ToJibrilFormat converts a MergedNetworkPolicy to the Jibril agent compatible format.
+func (m *MergedNetworkPolicy) ToJibrilFormat() map[string]interface{} {
+	// Convert policy rules to Jibril format
+	rules := make([]map[string]interface{}, 0, len(m.Rules))
+	for _, rule := range m.Rules {
+		ruleMap := map[string]interface{}{
+			"policy": rule.Action.String(),
+		}
+
+		// Add the appropriate field based on rule type
+		switch rule.Type {
+		case NetworkPolicyRuleTypeCIDR:
+			ruleMap["cidr"] = rule.Value
+		case NetworkPolicyRuleTypeDomain:
+			ruleMap["domain"] = rule.Value
+		}
+
+		rules = append(rules, ruleMap)
+	}
+
+	// Map CIDR Mode and Resolve Mode to Jibril format
+	cidrMode := "both"
+	resolveMode := "bypass"
+
+	switch m.Config.CIDRMode {
+	case NetworkPolicyCIDRModeBoth:
+		cidrMode = "both"
+	case NetworkPolicyCIDRModeIPv4:
+		cidrMode = "alert"
+	case NetworkPolicyCIDRModeIPv6:
+		cidrMode = "enforce"
+	}
+
+	switch m.Config.ResolveMode {
+	case NetworkPolicyResolveModsBypass:
+		resolveMode = "bypass"
+	case NetworkPolicyResolveModeStrict:
+		resolveMode = "enforce"
+	case NetworkPolicyResolveModePermissive:
+		resolveMode = "alert"
+	}
+
+	// Build the Jibril format configuration
+	return map[string]interface{}{
+		"network_policy": map[string]interface{}{
+			"cidr_mode":      cidrMode,
+			"cidr_policy":    m.Config.CIDRPolicy.String(),
+			"resolve_mode":   resolveMode,
+			"resolve_policy": m.Config.ResolvePolicy.String(),
+			"rules":          rules,
+		},
+	}
+}
+
 // CreateNetworkPolicy represents the request to create a new network policy.
 type CreateNetworkPolicy struct {
 	Scope        NetworkPolicyScope        `json:"scope"`
@@ -414,11 +470,26 @@ func GetMergedNetworkPolicy(global *GlobalNetworkPolicy, repo *RepoNetworkPolicy
 		Rules: []NetworkPolicyRule{},
 	}
 
-	// Add global policy if available
+	// Store policy references
 	if global != nil {
 		merged.GlobalPolicy = &global.NetworkPolicy
+	}
+	if repo != nil {
+		merged.RepoPolicy = repo
+	}
+	if workflow != nil {
+		merged.WorkflowPolicy = workflow
+	}
 
-		// Track original rules for each policy level
+	// Apply the configs and rules in order from lowest to highest precedence
+	// 1. Start with defaults (already set above)
+	// 2. Add global policy
+	// 3. Add repo policy if available
+	// 4. Add workflow policy if available
+
+	// Global policy
+	if global != nil {
+		// Add global rules
 		globalRules := make([]NetworkPolicyRule, len(global.Rules))
 		copy(globalRules, global.Rules)
 		merged.Rules = append(merged.Rules, globalRules...)
@@ -427,10 +498,8 @@ func GetMergedNetworkPolicy(global *GlobalNetworkPolicy, repo *RepoNetworkPolicy
 		merged.Config = global.Config
 	}
 
-	// Add repo policy if available (repo overrides global)
-	if repo != nil {
-		merged.RepoPolicy = repo
-
+	// Repo policy (overrides global)
+	if repo != nil && repo.ID != "" {
 		// Add repo rules
 		repoRules := make([]NetworkPolicyRule, len(repo.Rules))
 		copy(repoRules, repo.Rules)
@@ -440,10 +509,8 @@ func GetMergedNetworkPolicy(global *GlobalNetworkPolicy, repo *RepoNetworkPolicy
 		merged.Config = repo.Config
 	}
 
-	// Add workflow policy if available (workflow overrides repo and global)
-	if workflow != nil {
-		merged.WorkflowPolicy = workflow
-
+	// Workflow policy (overrides repo and global)
+	if workflow != nil && workflow.ID != "" {
 		// Add workflow rules
 		workflowRules := make([]NetworkPolicyRule, len(workflow.Rules))
 		copy(workflowRules, workflow.Rules)

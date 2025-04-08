@@ -5,8 +5,8 @@ import (
 	"time"
 )
 
-// GitHubContext is the context of the event that happened in the GitHub.
-type GitHubContext struct {
+// AgentGithubContext is the context of the event that happened in the GitHub.
+type AgentGithubContext struct {
 	ID                string    `json:"id"`
 	Action            string    `json:"action"`
 	Actor             string    `json:"actor"`
@@ -37,7 +37,7 @@ type GitHubContext struct {
 	UpdateAt          time.Time `json:"updated_at"`
 }
 
-func (g *GitHubContext) Validate() error {
+func (g *AgentGithubContext) Validate() error {
 	var errs []string
 
 	if g.Job == "" {
@@ -52,9 +52,18 @@ func (g *GitHubContext) Validate() error {
 		errs = append(errs, "workflow is required")
 	}
 
+	// Validate repository information
+	if g.Repository == "" {
+		errs = append(errs, "repository is required")
+	}
+
 	if len(errs) > 0 {
 		return fmt.Errorf("invalid github context: %s", join(errs))
 	}
 
 	return nil
 }
+
+// GitHubContext is an alias for AgentGithubContext to maintain backwards compatibility.
+// Deprecated: Use AgentGithubContext instead.
+type GitHubContext = AgentGithubContext

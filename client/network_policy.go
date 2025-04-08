@@ -5,7 +5,7 @@ import (
 	"net/http"
 	"net/url"
 
-	"github.com/listendev/jibril-server/types"
+	"github.com/listendev/jibril-api/types"
 )
 
 // CreateNetworkPolicy creates a new network policy.
@@ -38,7 +38,9 @@ func (c *Client) DeleteNetworkPolicy(ctx context.Context, policyID string) error
 func (c *Client) NetworkPolicies(ctx context.Context, scope types.NetworkPolicyScope) ([]types.NetworkPolicy, error) {
 	var out []types.NetworkPolicy
 
-	return out, c.do(ctx, &out, http.MethodGet, "/api/v1/network_policies/scope/"+string(scope), nil)
+	// Make the API call
+	path := "/api/v1/network_policies/scope/" + string(scope)
+	return out, c.do(ctx, &out, http.MethodGet, path, nil)
 }
 
 // MergedNetworkPolicy retrieves a merged network policy for a specific context.
@@ -52,6 +54,27 @@ func (c *Client) MergedNetworkPolicy(ctx context.Context, repositoryID, workflow
 	if workflowName != "" {
 		q.Set("workflow_name", workflowName)
 	}
+
+	path := "/api/v1/network_policies/merged"
+	if len(q) > 0 {
+		path += "?" + q.Encode()
+	}
+
+	return out, c.do(ctx, &out, http.MethodGet, path, nil)
+}
+
+// MergedNetworkPolicyJibrilFormat retrieves a merged network policy in Jibril-compatible format.
+func (c *Client) MergedNetworkPolicyJibrilFormat(ctx context.Context, repositoryID, workflowName string) (map[string]interface{}, error) {
+	var out map[string]interface{}
+
+	q := url.Values{}
+	if repositoryID != "" {
+		q.Set("repository_id", repositoryID)
+	}
+	if workflowName != "" {
+		q.Set("workflow_name", workflowName)
+	}
+	q.Set("format", "jibril")
 
 	path := "/api/v1/network_policies/merged"
 	if len(q) > 0 {

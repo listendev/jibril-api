@@ -8,7 +8,7 @@ import (
 	"net/url"
 	"time"
 
-	"github.com/listendev/jibril-server/types/errs"
+	"github.com/listendev/jibril-api/types/errs"
 )
 
 type AgentKind string
@@ -16,8 +16,10 @@ type AgentKind string
 const (
 	AgentKindGithub     AgentKind = "github"
 	AgentKindKubernetes AgentKind = "kubernetes"
+	AgentKindVanilla    AgentKind = "vanilla"
 
 	ErrUnauthorizedAgent = errs.UnauthorizedError("permission denied")
+	ErrAgentNotFound     = errs.NotFoundError("agent not found")
 )
 
 func (k AgentKind) String() string {
@@ -26,7 +28,7 @@ func (k AgentKind) String() string {
 
 func (k AgentKind) IsValid() bool {
 	switch k {
-	case AgentKindGithub, AgentKindKubernetes:
+	case AgentKindGithub, AgentKindKubernetes, AgentKindVanilla:
 		return true
 	}
 
@@ -70,6 +72,11 @@ func (l *AgentLabels) Scan(value interface{}) error {
 	default:
 		return fmt.Errorf("unsupported type for AgentLabels: %T", value)
 	}
+}
+
+// Validate checks the labels against defined validation rules.
+func (l AgentLabels) Validate() error {
+	return ValidateLabels(map[string]string(l))
 }
 
 // The format is: label.key=value (e.g., label.environment=production).
@@ -131,22 +138,23 @@ func (c *AgentKubernetesContext) Validate() error {
 
 // Agent represents the stored agent model.
 type Agent struct {
-	ID                string                  `db:"id"         json:"id"`
-	ProjectID         string                  `db:"project_id" json:"project_id"`
-	OS                string                  `db:"os"         json:"os"`
-	Arch              string                  `db:"arch"       json:"arch"`
-	Hostname          string                  `db:"hostname"   json:"hostname"`
-	Version           string                  `db:"version"    json:"version"`
-	IP                string                  `db:"ip"         json:"ip"`
-	MachineID         string                  `db:"machine_id" json:"machine_id"`
-	Labels            AgentLabels             `db:"labels"     json:"labels"`
-	Kind              AgentKind               `db:"kind"       json:"kind"`
-	GithubContext     *GitHubContext          `db:"-"          json:"github_context,omitempty"`
-	KubernetesContext *AgentKubernetesContext `db:"-"          json:"kubernetes_context,omitempty"`
-	NetworkPolicy     *MergedNetworkPolicy    `db:"-"          json:"network_policy,omitempty"`
-	Active            bool                    `db:"active"     json:"active"`
-	CreatedAt         time.Time               `db:"created_at" json:"created_at"`
-	UpdatedAt         time.Time               `db:"updated_at" json:"updated_at"`
+	ID                string                  `json:"id"`
+	ProjectID         string                  `json:"project_id"`
+	OS                string                  `json:"os"`
+	Arch              string                  `json:"arch"`
+	Hostname          string                  `json:"hostname"`
+	Version           string                  `json:"version"`
+	IP                string                  `json:"ip"`
+	MachineID         string                  `json:"machine_id"`
+	Labels            AgentLabels             `json:"labels"`
+	Kind              AgentKind               `json:"kind"`
+	GithubContext     *AgentGithubContext     `json:"github_context,omitempty"`
+	KubernetesContext *AgentKubernetesContext `json:"kubernetes_context,omitempty"`
+	VanillaContext    *AgentVanillaContext    `json:"vanilla_context,omitempty"`
+	NetworkPolicy     *MergedNetworkPolicy    `json:"network_policy,omitempty"`
+	Active            bool                    `json:"active"`
+	CreatedAt         time.Time               `json:"created_at"`
+	UpdatedAt         time.Time               `json:"updated_at"`
 }
 
 // CreateAgent represents the request to create a new agent.
@@ -161,8 +169,9 @@ type CreateAgent struct {
 	Labels    AgentLabels `json:"labels"`
 	Kind      AgentKind   `json:"kind"`
 
-	GithubContext     *GitHubContext          `json:"github_context,omitempty"`
+	GithubContext     *AgentGithubContext     `json:"github_context,omitempty"`
 	KubernetesContext *AgentKubernetesContext `json:"kubernetes_context,omitempty"`
+	VanillaContext    *AgentVanillaContext    `json:"vanilla_context,omitempty"`
 }
 
 const (
@@ -208,15 +217,22 @@ func (c *CreateAgent) Validate() error {
 		return fmt.Errorf("invalid agent: %s", join(errs))
 	}
 
+	// Validate labels
+	if err := c.Labels.Validate(); err != nil {
+		return err
+	}
+
 	// Validate context based on Kind
 	switch c.Kind {
 	case AgentKindGithub:
 		return c.GithubContext.Validate()
 	case AgentKindKubernetes:
 		return c.KubernetesContext.Validate()
+	case AgentKindVanilla:
+		return c.VanillaContext.Validate()
 	}
 
-	if c.GithubContext == nil && c.KubernetesContext == nil {
+	if c.GithubContext == nil && c.KubernetesContext == nil && c.VanillaContext == nil {
 		return errors.New("at least one context is required")
 	}
 
@@ -231,16 +247,21 @@ type AgentCreated struct {
 
 // UpdateAgent represents the request to update an existing agent.
 type UpdateAgent struct {
-	OS        *string `json:"os,omitempty"`
-	Arch      *string `json:"arch,omitempty"`
-	Hostname  *string `json:"hostname,omitempty"`
-	Version   *string `json:"version,omitempty"`
-	IP        *string `json:"ip,omitempty"`
-	MachineID *string `json:"machine_id,omitempty"`
+	OS                *string                 `json:"os,omitempty"`
+	Arch              *string                 `json:"arch,omitempty"`
+	Hostname          *string                 `json:"hostname,omitempty"`
+	Version           *string                 `json:"version,omitempty"`
+	IP                *string                 `json:"ip,omitempty"`
+	MachineID         *string                 `json:"machine_id,omitempty"`
+	Kind              *AgentKind              `json:"kind,omitempty"`
+	GithubContext     *AgentGithubContext     `json:"github_context,omitempty"`
+	KubernetesContext *AgentKubernetesContext `json:"kubernetes_context,omitempty"`
+	VanillaContext    *AgentVanillaContext    `json:"vanilla_context,omitempty"`
 }
 
-func (a *UpdateAgent) Validate() error {
-	if a.OS == nil && a.Arch == nil && a.Hostname == nil && a.Version == nil && a.IP == nil && a.MachineID == nil {
+func (a *UpdateAgent) Validate() error { //nolint:gocognit,gocyclo
+	if a.OS == nil && a.Arch == nil && a.Hostname == nil &&
+		a.Version == nil && a.IP == nil && a.MachineID == nil && a.Kind == nil {
 		return errors.New("at least one field is required")
 	}
 
@@ -264,10 +285,42 @@ func (a *UpdateAgent) Validate() error {
 
 	if a.IP != nil && *a.IP == "" {
 		errs = append(errs, "ip valid but empty")
+	} else if a.IP != nil {
+		ip := net.ParseIP(*a.IP)
+		if ip == nil {
+			errs = append(errs, "invalid ip format")
+		}
 	}
 
 	if a.MachineID != nil && *a.MachineID == "" {
 		errs = append(errs, "machine_id valid but empty")
+	}
+
+	if a.Kind != nil {
+		if !a.Kind.IsValid() {
+			errs = append(errs, "invalid agent kind")
+		}
+
+		switch *a.Kind {
+		case AgentKindGithub:
+			if a.GithubContext == nil {
+				errs = append(errs, "github context is required")
+			} else if err := a.GithubContext.Validate(); err != nil {
+				errs = append(errs, "invalid github context: "+err.Error())
+			}
+		case AgentKindKubernetes:
+			if a.KubernetesContext == nil {
+				errs = append(errs, "kubernetes context is required")
+			} else if err := a.KubernetesContext.Validate(); err != nil {
+				errs = append(errs, "invalid kubernetes context: "+err.Error())
+			}
+		case AgentKindVanilla:
+			if a.VanillaContext == nil {
+				errs = append(errs, "vanilla context is required")
+			} else if err := a.VanillaContext.Validate(); err != nil {
+				errs = append(errs, "invalid vanilla context: "+err.Error())
+			}
+		}
 	}
 
 	if len(errs) > 0 {
@@ -296,18 +349,27 @@ func join(strs []string) string {
 }
 
 type ListAgents struct {
-	Labels  AgentLabels   `json:"labels,omitempty"`
-	Filters *AgentFilters `json:"filters,omitempty"`
+	Labels    AgentLabels   `json:"labels,omitempty"`
+	Filters   *AgentFilters `json:"filters,omitempty"`
+	ProjectID string        `json:"project_id,omitempty"` // ProjectID for filtering
 	PageArgs
 }
 
 func (q *ListAgents) Validate() error {
+	// Validate filters if provided
 	if q.Filters != nil {
 		if q.Filters.IP != nil {
 			ip := net.ParseIP(*q.Filters.IP)
 			if ip == nil {
 				return errors.New("invalid ip")
 			}
+		}
+	}
+
+	// Validate labels if provided
+	if len(q.Labels) > 0 {
+		if err := q.Labels.Validate(); err != nil {
+			return err
 		}
 	}
 

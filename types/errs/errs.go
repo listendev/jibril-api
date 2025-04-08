@@ -1,7 +1,10 @@
 // Package errs contains the error types returned by the jibril-server.
 package errs
 
-const ErrInvalidArgument = InvalidArgumentError("invalid argument")
+const (
+	ErrInvalidArgument = InvalidArgumentError("invalid argument")
+	ErrInternalServer  = InternalServerError("internal server error")
+)
 
 type InvalidArgumentError string
 
@@ -11,6 +14,19 @@ func (e InvalidArgumentError) Is(target error) bool {
 		return true // All InvalidArgumentError types should match ErrInvalidArgument
 	}
 	if target, ok := target.(InvalidArgumentError); ok {
+		return e == target
+	}
+	return false
+}
+
+type InternalServerError string
+
+func (e InternalServerError) Error() string { return string(e) }
+func (e InternalServerError) Is(target error) bool {
+	if target == ErrInternalServer {
+		return true // All InternalServerError types should match ErrInternalServer
+	}
+	if target, ok := target.(InternalServerError); ok {
 		return e == target
 	}
 	return false
@@ -65,6 +81,21 @@ func (e ConflictError) Is(target error) bool {
 		return true // All ConflictError types should match ErrConflict
 	}
 	if target, ok := target.(ConflictError); ok {
+		return e == target
+	}
+	return false
+}
+
+const ErrPermissionDenied = PermissionDeniedError("permission denied")
+
+type PermissionDeniedError string
+
+func (e PermissionDeniedError) Error() string { return string(e) }
+func (e PermissionDeniedError) Is(target error) bool {
+	if target == ErrPermissionDenied {
+		return true // All PermissionDeniedError types should match ErrPermissionDenied
+	}
+	if target, ok := target.(PermissionDeniedError); ok {
 		return e == target
 	}
 	return false
